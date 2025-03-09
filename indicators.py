@@ -1,8 +1,8 @@
 import pandas as pd
-import requests
 from ta.momentum import RSIIndicator
 from ta.trend import MACD, SMAIndicator, ADXIndicator
 from ta.volatility import BollingerBands
+import requests
 
 def calculate_indicators(data):
     """Calcula indicadores técnicos: RSI, MACD, ADX, SMAs y Bandas de Bollinger."""

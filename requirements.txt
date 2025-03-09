@@ -3,7 +3,7 @@ pandas
 ta
 xgboost
 requests
-openai
+openai==0.28
 langdetect
 pytz
 matplotlib

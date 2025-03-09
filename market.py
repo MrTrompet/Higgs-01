@@ -13,7 +13,7 @@ def fetch_data(symbol="1h", timeframe="1h", limit=100):
         "vs_currency": "usd",
         "days": 14  # Solicita datos de 14 días
     }
-    headers = {"x_cg_pro_api_key": COINGECKO_API_KEY}  # Se usa la API key
+    headers = {"x_cg_pro_api_key": COINGECKO_API_KEY}
     retries = 0
     while retries < MAX_RETRIES:
         try:
@@ -22,14 +22,13 @@ def fetch_data(symbol="1h", timeframe="1h", limit=100):
             if not data or len(data) == 0:
                 raise ValueError("La respuesta de la API está vacía.")
             
-            # Convertir la respuesta en DataFrame
             df = pd.DataFrame(data, columns=['timestamp', 'open', 'high', 'low', 'close'])
             df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
             
             if df.empty or len(df) < 2:
                 raise ValueError("Datos insuficientes devueltos por la API.")
             
-            df['volume'] = 0  # La API no proporciona volumen
+            df['volume'] = 0
             print(f"[INFO] Se obtuvieron {len(df)} registros de OHLC.")
             return df
         except Exception as e:

@@ -1,7 +1,7 @@
 import time
 import pandas as pd
 import matplotlib
-matplotlib.use('Agg')  # Usa backend sin GUI
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import io
 import requests
@@ -10,29 +10,16 @@ from config import SYMBOL, TELEGRAM_TOKEN
 import mplfinance as mpf
 from market import fetch_data
 
-# Mapeo de intervalos válidos
 TIMEFRAME_MAPPING = {
-    "1m": "1m",
-    "3m": "3m",
-    "5m": "5m",
-    "10m": "5m",
-    "15m": "15m",
-    "30m": "30m",
-    "1h": "1h",
-    "2h": "2h",
-    "4h": "4h",
-    "6h": "6h",
-    "8h": "8h",
-    "12h": "12h",
-    "1d": "1d",
-    "3d": "3d",
-    "1w": "1w",
-    "1M": "1M"
+    "1m": "1m", "3m": "3m", "5m": "5m", "10m": "5m",
+    "15m": "15m", "30m": "30m", "1h": "1h", "2h": "2h",
+    "4h": "4h", "6h": "6h", "8h": "8h", "12h": "12h",
+    "1d": "1d", "3d": "3d", "1w": "1w", "1M": "1M"
 }
 
 def extract_timeframe(text):
     """
-    Extrae el timeframe de la cadena 'text' mediante regex.
+    Extrae el intervalo de tiempo (timeframe) de la cadena 'text'.
     Retorna el valor mapeado o "1h" por defecto.
     """
     pattern = r'\b(\d+m|\d+h|\d+d|\d+w|\d+M)\b'
@@ -52,7 +39,7 @@ def fetch_chart_data(symbol=SYMBOL, timeframe="1h", limit=100):
 
 def send_graphic(chat_id, timeframe_input="1h", chart_type="line"):
     """
-    Genera un gráfico de las últimas velas y lo envía a Telegram.
+    Genera un gráfico y lo envía a Telegram.
     Parámetros:
       - timeframe_input: intervalo solicitado.
       - chart_type: 'line' o 'candlestick'.
@@ -69,10 +56,8 @@ def send_graphic(chat_id, timeframe_input="1h", chart_type="line"):
         buf = io.BytesIO()
         caption = f"Gráfico de {SYMBOL} - {timeframe}"
         
-        # Estilo futurista personalizado
         mc = mpf.make_marketcolors(
-            up='#00ff00',
-            down='#ff4500',
+            up='#00ff00', down='#ff4500',
             edge={'up': '#00ff00', 'down': '#ff4500'},
             wick={'up': '#00ff00', 'down': '#ff4500'},
             volume='#555555'
@@ -82,15 +67,13 @@ def send_graphic(chat_id, timeframe_input="1h", chart_type="line"):
             marketcolors=mc,
             facecolor='#0f0f0f',
             gridstyle='--',
-            rc={
-                'font.size': 10,
+            rc={'font.size': 10,
                 'figure.facecolor': '#0f0f0f',
                 'axes.facecolor': '#0f0f0f',
                 'axes.edgecolor': 'white',
                 'axes.labelcolor': 'white',
                 'xtick.color': 'white',
-                'ytick.color': 'white'
-            }
+                'ytick.color': 'white'}
         )
         
         if chart_type.lower() == "candlestick":
@@ -100,7 +83,7 @@ def send_graphic(chat_id, timeframe_input="1h", chart_type="line"):
             sr_resistance = [resistance] * len(data)
             ap2 = mpf.make_addplot(sr_support, color='yellow', linestyle='--', width=0.8)
             ap3 = mpf.make_addplot(sr_resistance, color='orange', linestyle='--', width=0.8)
-            fig, axlist = mpf.plot(
+            fig, _ = mpf.plot(
                 data,
                 type='candle',
                 style=futuristic_style,
@@ -125,7 +108,7 @@ def send_graphic(chat_id, timeframe_input="1h", chart_type="line"):
             plt.legend()
             plt.grid(True, linestyle="--", alpha=0.7, color='gray')
             plt.gca().set_facecolor('#0f0f0f')
-            plt.savefig(buf, format="png")
+            plt.savefig(buf, format='png')
             plt.close()
         
         buf.seek(0)

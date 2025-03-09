@@ -7,15 +7,16 @@ from market import fetch_data, fetch_btc_price
 from indicators import calculate_indicators, fetch_btc_dominance
 from ml_model import aggregate_signals
 
+# Configurar API key de OpenAI
 openai.api_key = OPENAI_API_KEY
 
-# Definir START_TIME como el momento en que se inicia este módulo (en Unix timestamp)
-START_TIME = int(time.time())
+# Para pruebas, puedes comentar START_TIME o establecerlo en 0 para procesar todos los mensajes
+START_TIME = 0  # int(time.time())
 
 def send_telegram_message(message, chat_id=None):
     """Envía un mensaje al chat de Telegram."""
     if not chat_id:
-        chat_id = TELEGRAM_CHAT_ID  # Usa el chat grupal por defecto
+        chat_id = TELEGRAM_CHAT_ID
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     payload = {'chat_id': chat_id, 'text': message}
     try:
@@ -26,10 +27,7 @@ def send_telegram_message(message, chat_id=None):
         print(f"[Error] En la conexión con Telegram: {e}")
 
 def detect_language(text):
-    """
-    Detección del idioma usando langdetect.
-    Retorna 'es' si se detecta español, 'en' en caso contrario.
-    """
+    """Detecta el idioma usando langdetect."""
     try:
         lang = detect(text)
         return 'es' if lang == 'es' else 'en'
@@ -39,25 +37,33 @@ def detect_language(text):
 
 def handle_telegram_message(update):
     """
-    Procesa los mensajes recibidos en Telegram y responde según la consulta:
+    Procesa los mensajes recibidos en Telegram y responde según el contenido:
       - Si se solicita un gráfico, llama a PrintGraphic.
       - Si se solicita "indicadores" o se menciona "bnb", responde con los indicadores técnicos actuales.
-      - Si se menciona "dominancia" o "btc", utiliza OpenAI para generar un análisis descriptivo de la situación de BTC.
-      - En otros casos, se utiliza OpenAI para responder de forma general basada en los indicadores.
-    Solo procesa mensajes nuevos (con fecha posterior a START_TIME).
+      - Si se menciona "dominancia" o "btc", utiliza OpenAI para generar un análisis descriptivo de la situación.
+      - En otros casos, utiliza OpenAI para responder de forma general basada en los indicadores técnicos.
     """
+    # Log de la actualización recibida
+    print(f"[DEBUG] Update recibido: {update}")
+    
     message_obj = update.get("message", {})
     message_text = message_obj.get("text", "").strip()
     chat_id = message_obj.get("chat", {}).get("id")
     user_data = message_obj.get("from", {})
     username = user_data.get("username") or user_data.get("first_name", "Agente")
     message_date = message_obj.get("date", 0)
-
-    # Ignorar mensajes antiguos o sin texto/ID
-    if message_date < START_TIME or not message_text or not chat_id:
+    
+    # Si no hay mensaje, se sale
+    if not message_text or not chat_id:
+        print("[DEBUG] Mensaje vacío o sin chat_id, se descarta.")
         return
 
+    # Para propósitos de prueba, se comenta la restricción de mensajes antiguos
+    # if message_date < START_TIME:
+    #     return
+
     lower_msg = message_text.lower()
+    print(f"[DEBUG] Procesando mensaje de @{username}: {message_text}")
 
     # Rama: Solicitud de gráfico
     if any(phrase in lower_msg for phrase in ["grafico", "gráfico"]):
@@ -67,6 +73,7 @@ def handle_telegram_message(update):
             chart_type = "line"
             if any(keyword in lower_msg for keyword in ["vela", "velas", "candlestick", "japonesas"]):
                 chart_type = "candlestick"
+            print(f"[DEBUG] Solicitado gráfico: {chart_type} en {timeframe_req}")
             send_graphic(chat_id, timeframe_req, chart_type)
         except Exception as e:
             send_telegram_message(f"Error al generar gráfico: {e}", chat_id)
@@ -83,6 +90,7 @@ def handle_telegram_message(update):
             personalized_msg = (
                 f"Hola agente @{username}, estos son los indicadores técnicos actuales para {SYMBOL}:\n\n{custom_signal}"
             )
+            print(f"[DEBUG] Indicadores enviados: {custom_signal}")
             send_telegram_message(personalized_msg, chat_id)
         except Exception as e:
             send_telegram_message(f"Error al obtener indicadores: {e}", chat_id)
@@ -94,7 +102,6 @@ def handle_telegram_message(update):
         try:
             btc_price = fetch_btc_price()
             btc_dominance = fetch_btc_dominance()
-            # Construir prompt para análisis descriptivo de BTC
             context = (
                 f"El precio actual de BTC es ${btc_price:.2f} y la dominancia es de {btc_dominance:.2f}%. "
                 "Analiza de forma concisa y descriptiva qué implica esta situación para el mercado, especialmente para las altcoins."
@@ -102,6 +109,7 @@ def handle_telegram_message(update):
             system_prompt = (
                 "Eres un analista financiero experto, responde de forma precisa, en español, y proporciona insights relevantes."
             )
+            print(f"[DEBUG] Solicitud de análisis de dominancia: BTC ${btc_price:.2f}, Dominancia {btc_dominance:.2f}%")
             response = openai.ChatCompletion.create(
                 model="gpt-4",
                 messages=[
@@ -187,7 +195,6 @@ def handle_telegram_message(update):
             temperature=0.7
         )
         answer = response.choices[0].message.content.strip()
-        # Escapar manualmente caracteres problemáticos
         answer = answer.replace("_", "\\_").replace("*", "\\*").replace("[", "\\[").replace("`", "\\`")
     except Exception as e:
         answer = f"⚠️ Error al procesar la solicitud: {e}"

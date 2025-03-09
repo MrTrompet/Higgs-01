@@ -1,4 +1,3 @@
-# market.py
 import requests
 import pandas as pd
 from config import COINGECKO_COIN_ID, TIMEFRAME, MAX_RETRIES
@@ -11,21 +10,26 @@ def fetch_data(symbol=TIMEFRAME, timeframe=TIMEFRAME, limit=100):
     url = f"https://api.coingecko.com/api/v3/coins/{COINGECKO_COIN_ID}/ohlc"
     params = {
         "vs_currency": "usd",
-        "days": 1  # Datos de 1 día (candles de 1h)
+        "days": 1  # Datos de 1 día (candles de 1h o resolución de 5 minutos, según la API)
     }
     retries = 0
     while retries < MAX_RETRIES:
         try:
             response = requests.get(url, params=params)
             data = response.json()
+            if not data or len(data) == 0:
+                raise ValueError("La respuesta de la API está vacía.")
             # Formato de cada vela: [timestamp, open, high, low, close]
             df = pd.DataFrame(data, columns=['timestamp', 'open', 'high', 'low', 'close'])
+            if df.empty or len(df) < 2:
+                raise ValueError("Datos insuficientes devueltos por la API.")
             df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
             # La API no proporciona volumen, se asigna 0
             df['volume'] = 0
+            print(f"[INFO] Se obtuvieron {len(df)} registros de OHLC.")
             return df
         except Exception as e:
-            print(f"[Error] {e}. Reintentando...")
+            print(f"[Error] {e}. Reintentando... ({retries + 1}/{MAX_RETRIES})")
             retries += 1
     raise Exception("No se pudieron obtener datos tras varios intentos.")
 
@@ -37,4 +41,6 @@ def fetch_btc_price():
     params = {"ids": "bitcoin", "vs_currencies": "usd"}
     response = requests.get(url, params=params)
     data = response.json()
+    if "bitcoin" not in data:
+        raise Exception("Error obteniendo el precio de BTC.")
     return data["bitcoin"]["usd"]

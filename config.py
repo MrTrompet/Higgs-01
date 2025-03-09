@@ -1,10 +1,9 @@
 import os
 
-# Columnas utilizadas para cálculos (se mantienen para compatibilidad)
+# Columnas utilizadas para cálculos
 feature_columns = ['open', 'high', 'low', 'close', 'volume', 'sma_25', 'bb_low', 'bb_medium', 'bb_high']
 
 # --- Configuración de APIs y parámetros ---
-# Si las variables de entorno no están definidas, se usan valores por defecto (p.ej., para pruebas locales)
 COINGECKO_COIN_ID = os.getenv("COINGECKO_COIN_ID", "binancecoin")
 
 # Configuración de Telegram
@@ -15,5 +14,6 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "-4726165466")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "tu_openai_api_key_aquí")
 
 # Configuración del mercado
-TIMEFRAME = os.getenv("TIMEFRAME", "1h")      # Temporalidad de las velas
-MAX_RETRIES = int(os.getenv("MAX_RETRIES", "5"))  # Número máximo de reintentos en la consulta
+SYMBOL = os.getenv("SYMBOL", "BNB/USDT")  # Asegúrate de definir SYMBOL
+TIMEFRAME = os.getenv("TIMEFRAME", "1h")
+MAX_RETRIES = int(os.getenv("MAX_RETRIES", "5"))

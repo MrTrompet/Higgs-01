@@ -9,11 +9,11 @@ COINGECKO_COIN_ID = os.getenv("COINGECKO_COIN_ID", "binancecoin")
 COINGECKO_API_KEY = os.getenv("COINGECKO_API_KEY", )  # Tu API key
 
 # Configuración de Telegram
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "tu_token_de_telegram_aquí")
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "-4726165466")
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", )
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", )
 
 # API de OpenAI
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "tu_openai_api_key_aquí")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", )
 
 # Configuración del mercado
 SYMBOL = os.getenv("SYMBOL", "BNB/USDT")  # Símbolo que usas en el análisis

@@ -9,6 +9,8 @@ from ml_model import aggregate_signals
 
 # Configurar API key de OpenAI
 openai.api_key = OPENAI_API_KEY
+if not openai.api_key:
+    print("[DEBUG] La API key de OpenAI no está configurada correctamente.")
 
 # Para pruebas, establecemos START_TIME en 0 para procesar todos los mensajes
 START_TIME = 0
@@ -39,9 +41,9 @@ def handle_telegram_message(update):
     """
     Procesa los mensajes recibidos en Telegram y responde según el contenido:
       - "grafico": llama a PrintGraphic.
-      - "indicador" o "bnb": responde con los indicadores técnicos actuales para SYMBOL.
-      - "dominancia" o "btc": usa OpenAI para generar un análisis descriptivo de la situación de BTC.
-      - De lo contrario, responde con una consulta general a OpenAI basada en los indicadores.
+      - "indicador" o "bnb": responde con indicadores técnicos actuales para SYMBOL.
+      - "dominancia" o "btc": usa OpenAI para un análisis descriptivo de BTC.
+      - De lo contrario, consulta a OpenAI para responder basado en los indicadores.
     """
     print(f"[DEBUG] Update recibido: {update}")
     message_obj = update.get("message", {})
@@ -51,7 +53,6 @@ def handle_telegram_message(update):
     username = user_data.get("username") or user_data.get("first_name", "Agente")
     message_date = message_obj.get("date", 0)
     
-    # Procesa todos los mensajes (START_TIME está en 0 para pruebas)
     if not message_text or not chat_id:
         print("[DEBUG] Mensaje vacío o sin chat_id, se descarta.")
         return
@@ -74,7 +75,7 @@ def handle_telegram_message(update):
             print(f"[Error] Generando gráfico: {e}")
         return
 
-    # Rama: Solicitud de indicadores técnicos para SYMBOL (por ejemplo, BNB)
+    # Rama: Solicitud de indicadores técnicos para SYMBOL (ej. BNB)
     if "indicador" in lower_msg or "bnb" in lower_msg:
         try:
             data = fetch_data(SYMBOL, TIMEFRAME)
@@ -114,13 +115,14 @@ def handle_telegram_message(update):
                 temperature=0.7
             )
             answer = response.choices[0].message.content.strip()
+            print(f"[DEBUG] Respuesta OpenAI dominancia: {answer}")
         except Exception as e:
             answer = f"⚠️ Error al procesar el análisis de dominancia: {e}"
             print(f"[Error] Dominancia: {e}")
         send_telegram_message(answer, chat_id)
         return
 
-    # Rama: Consulta general a OpenAI para cualquier otro mensaje (como "hola" o "/start")
+    # Rama: Consulta general a OpenAI (para mensajes como "hola", "/start", etc.)
     try:
         language = detect_language(message_text)
     except Exception as e:
@@ -191,6 +193,7 @@ def handle_telegram_message(update):
         )
         answer = response.choices[0].message.content.strip()
         answer = answer.replace("_", "\\_").replace("*", "\\*").replace("[", "\\[").replace("`", "\\`")
+        print(f"[DEBUG] Respuesta OpenAI general: {answer}")
     except Exception as e:
         answer = f"⚠️ Error al procesar la solicitud: {e}"
         print(f"[Error] OpenAI: {e}")
@@ -198,7 +201,7 @@ def handle_telegram_message(update):
     send_telegram_message(answer, chat_id)
 
 def get_updates(offset=None):
-    """Obtiene las actualizaciones desde Telegram usando el parámetro offset para evitar procesar mensajes repetidos."""
+    """Obtiene las actualizaciones desde Telegram usando el parámetro offset."""
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getUpdates"
     params = {}
     if offset is not None:
@@ -214,4 +217,3 @@ def get_updates(offset=None):
     except Exception as e:
         print(f"[Error] En la conexión con Telegram: {e}")
         return []
-

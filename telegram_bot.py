@@ -1,4 +1,3 @@
-# telegram_bot.py
 import time
 from telegram_handler import get_updates, handle_telegram_message
 

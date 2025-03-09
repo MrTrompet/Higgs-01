@@ -1,23 +1,23 @@
 from datetime import datetime, timedelta
 import requests
 import pandas as pd
-from config import COINGECKO_COIN_ID, MAX_RETRIES
+from config import COINGECKO_COIN_ID, COINGECKO_API_KEY, MAX_RETRIES
 
 def fetch_data(symbol="1h", timeframe="1h", limit=100):
     """
-    Obtiene datos OHLC utilizando la API de CoinGecko.
-    Se solicita datos de 14 días para obtener velas de 1h.
-    Nota: Se elimina el filtrado por fecha, ya que se asume que la API retorna solo datos para los últimos 14 días.
+    Obtiene datos OHLC utilizando la API de CoinGecko para 14 días (velas de 1h).
+    Se envía la API key en el header.
     """
     url = f"https://api.coingecko.com/api/v3/coins/{COINGECKO_COIN_ID}/ohlc"
     params = {
         "vs_currency": "usd",
-        "days": 14  # Se solicitan datos de 14 días para obtener velas de 1h
+        "days": 14  # Solicita datos de 14 días
     }
+    headers = {"x_cg_pro_api_key": COINGECKO_API_KEY}  # Se usa la API key
     retries = 0
     while retries < MAX_RETRIES:
         try:
-            response = requests.get(url, params=params)
+            response = requests.get(url, params=params, headers=headers)
             data = response.json()
             if not data or len(data) == 0:
                 raise ValueError("La respuesta de la API está vacía.")
@@ -26,7 +26,7 @@ def fetch_data(symbol="1h", timeframe="1h", limit=100):
             df = pd.DataFrame(data, columns=['timestamp', 'open', 'high', 'low', 'close'])
             df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
             
-            # Comprobamos que se hayan obtenido al menos 2 registros para los cálculos
+            # Se asume que la API devuelve datos del período solicitado
             if df.empty or len(df) < 2:
                 raise ValueError("Datos insuficientes devueltos por la API.")
             

@@ -6,7 +6,6 @@ from ta.volatility import BollingerBands
 
 def calculate_indicators(data):
     """Calcula indicadores técnicos: RSI, MACD, ADX, SMAs y Bandas de Bollinger."""
-    # Verificar que hay suficientes datos (al menos 2 registros)
     if len(data) < 2:
         raise ValueError("Datos insuficientes para calcular indicadores técnicos (se requieren al menos 2 registros).")
     
@@ -15,11 +14,9 @@ def calculate_indicators(data):
     low = data['low']
     volume = data['volume']
     
-    # Dado que no se dispone de volumen real, se asigna un valor neutro
     cmf = 0
     volume_level = "N/A"
     
-    # Calcular SMAs y asignar None si la serie está vacía
     sma10_series = SMAIndicator(close, window=10).sma_indicator().dropna()
     sma_10 = sma10_series.iloc[-1] if not sma10_series.empty else None
     sma25_series = SMAIndicator(close, window=25).sma_indicator().dropna()
@@ -27,21 +24,17 @@ def calculate_indicators(data):
     sma50_series = SMAIndicator(close, window=50).sma_indicator().dropna()
     sma_50 = sma50_series.iloc[-1] if not sma50_series.empty else None
 
-    # Calcular MACD y su señal
     macd_series = MACD(close).macd().dropna()
     macd = macd_series.iloc[-1] if not macd_series.empty else None
     macd_signal_series = MACD(close).macd_signal().dropna()
     macd_signal = macd_signal_series.iloc[-1] if not macd_signal_series.empty else None
 
-    # Calcular RSI
     rsi_series = RSIIndicator(close, window=14).rsi().dropna()
     rsi = rsi_series.iloc[-1] if not rsi_series.empty else None
 
-    # Calcular ADX
     adx_series = ADXIndicator(high, low, close).adx().dropna()
     adx = adx_series.iloc[-1] if not adx_series.empty else None
 
-    # Calcular Bandas de Bollinger
     bb_indicator = BollingerBands(close, window=20, window_dev=2)
     bb_low_series = bb_indicator.bollinger_lband().dropna()
     bb_low = bb_low_series.iloc[-1] if not bb_low_series.empty else None
@@ -50,7 +43,6 @@ def calculate_indicators(data):
     bb_high_series = bb_indicator.bollinger_hband().dropna()
     bb_high = bb_high_series.iloc[-1] if not bb_high_series.empty else None
 
-    # Si hay al menos 2 registros, usar el penúltimo valor para prev_close; de lo contrario, usar el último
     prev_close = close.iloc[-2] if len(close) >= 2 else close.iloc[-1]
 
     indicators = {
@@ -74,7 +66,6 @@ def calculate_indicators(data):
 def check_cross_signals(data):
     """
     Detecta señales de Golden Cross o Death Cross usando SMAs de 10, 25 y 50.
-    Se comparan los valores de las últimas dos velas para identificar el cruce.
     """
     close = data['close']
     if len(close) < 2:

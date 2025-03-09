@@ -10,8 +10,8 @@ from ml_model import aggregate_signals
 # Configurar API key de OpenAI
 openai.api_key = OPENAI_API_KEY
 
-# Para pruebas, puedes comentar START_TIME o establecerlo en 0 para procesar todos los mensajes
-START_TIME = 0  # int(time.time())
+# Para pruebas, establecemos START_TIME en 0 para procesar todos los mensajes
+START_TIME = 0
 
 def send_telegram_message(message, chat_id=None):
     """Envía un mensaje al chat de Telegram."""
@@ -38,14 +38,12 @@ def detect_language(text):
 def handle_telegram_message(update):
     """
     Procesa los mensajes recibidos en Telegram y responde según el contenido:
-      - Si se solicita un gráfico, llama a PrintGraphic.
-      - Si se solicita "indicadores" o se menciona "bnb", responde con los indicadores técnicos actuales.
-      - Si se menciona "dominancia" o "btc", utiliza OpenAI para generar un análisis descriptivo de la situación.
-      - En otros casos, utiliza OpenAI para responder de forma general basada en los indicadores técnicos.
+      - "grafico": llama a PrintGraphic.
+      - "indicador" o "bnb": responde con los indicadores técnicos actuales para SYMBOL.
+      - "dominancia" o "btc": usa OpenAI para generar un análisis descriptivo de la situación de BTC.
+      - De lo contrario, responde con una consulta general a OpenAI basada en los indicadores.
     """
-    # Log de la actualización recibida
     print(f"[DEBUG] Update recibido: {update}")
-    
     message_obj = update.get("message", {})
     message_text = message_obj.get("text", "").strip()
     chat_id = message_obj.get("chat", {}).get("id")
@@ -53,14 +51,10 @@ def handle_telegram_message(update):
     username = user_data.get("username") or user_data.get("first_name", "Agente")
     message_date = message_obj.get("date", 0)
     
-    # Si no hay mensaje, se sale
+    # Procesa todos los mensajes (START_TIME está en 0 para pruebas)
     if not message_text or not chat_id:
         print("[DEBUG] Mensaje vacío o sin chat_id, se descarta.")
         return
-
-    # Para propósitos de prueba, se comenta la restricción de mensajes antiguos
-    # if message_date < START_TIME:
-    #     return
 
     lower_msg = message_text.lower()
     print(f"[DEBUG] Procesando mensaje de @{username}: {message_text}")
@@ -80,7 +74,7 @@ def handle_telegram_message(update):
             print(f"[Error] Generando gráfico: {e}")
         return
 
-    # Rama: Solicitud de indicadores técnicos para BNB
+    # Rama: Solicitud de indicadores técnicos para SYMBOL (por ejemplo, BNB)
     if "indicador" in lower_msg or "bnb" in lower_msg:
         try:
             data = fetch_data(SYMBOL, TIMEFRAME)
@@ -126,7 +120,7 @@ def handle_telegram_message(update):
         send_telegram_message(answer, chat_id)
         return
 
-    # Rama: Consulta general a OpenAI
+    # Rama: Consulta general a OpenAI para cualquier otro mensaje (como "hola" o "/start")
     try:
         language = detect_language(message_text)
     except Exception as e:
@@ -185,6 +179,7 @@ def handle_telegram_message(update):
         )
 
     try:
+        print("[DEBUG] Enviando consulta a OpenAI...")
         response = openai.ChatCompletion.create(
             model="gpt-4",
             messages=[
@@ -202,17 +197,21 @@ def handle_telegram_message(update):
 
     send_telegram_message(answer, chat_id)
 
-def get_updates():
-    """Obtiene los últimos mensajes enviados al bot."""
+def get_updates(offset=None):
+    """Obtiene las actualizaciones desde Telegram usando el parámetro offset para evitar procesar mensajes repetidos."""
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getUpdates"
+    params = {}
+    if offset is not None:
+        params["offset"] = offset
     try:
-        response = requests.get(url)
+        response = requests.get(url, params=params)
         if response.status_code == 200:
             updates = response.json().get("result", [])
-            return [upd for upd in updates if upd.get("message", {}).get("date", 0) >= START_TIME]
+            return updates
         else:
             print(f"[Error] Al obtener actualizaciones: {response.text}")
             return []
     except Exception as e:
         print(f"[Error] En la conexión con Telegram: {e}")
         return []
+

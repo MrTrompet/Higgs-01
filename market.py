@@ -41,3 +41,15 @@ def fetch_data(symbol="1h", timeframe="1h", limit=100):
             print(f"[Error] {e}. Reintentando... ({retries + 1}/{MAX_RETRIES})")
             retries += 1
     raise Exception("No se pudieron obtener datos tras varios intentos.")
+
+def fetch_btc_price():
+    """
+    Obtiene el precio actual de BTC en USD usando CoinGecko.
+    """
+    url = "https://api.coingecko.com/api/v3/simple/price"
+    params = {"ids": "bitcoin", "vs_currencies": "usd"}
+    response = requests.get(url, params=params)
+    data = response.json()
+    if "bitcoin" not in data:
+        raise Exception("Error obteniendo el precio de BTC.")
+    return data["bitcoin"]["usd"]

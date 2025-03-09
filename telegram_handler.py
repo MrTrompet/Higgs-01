@@ -28,23 +28,23 @@ def send_telegram_message(message, chat_id=None):
         print(f"[Error] En la conexión con Telegram: {e}")
 
 def detect_language(text):
-    """Detecta el idioma usando langdetect."""
+    """Detecta el idioma usando langdetect (se espera español)."""
     try:
         lang = detect(text)
-        return 'es' if lang == 'es' else 'en'
+        return 'es'  # Forzamos el español
     except Exception as e:
         print(f"[Error] detect_language: {e}")
-        return 'en'
+        return 'es'
 
 def handle_telegram_message(update):
     """
-    Procesa los mensajes recibidos en Telegram y responde según el contenido:
-      - "grafico": llama a PrintGraphic.
-      - "precio" + "bnb": responde con el precio actual de SYMBOL.
-      - Si el mensaje contiene "todos" y "indicador" o "indicadores técnicos" o "completo", envía un reporte completo.
-      - Si se menciona individualmente "rsi", "adx", "macd", "sma" o "cmf", responde con ese valor.
-      - "dominancia" o "btc": usa OpenAI para un análisis descriptivo sobre BTC.
-      - En otro caso, envía una consulta general a OpenAI.
+    Procesa los mensajes recibidos en Telegram y responde en español según el contenido:
+      - Si se solicita "gráfico", llama a PrintGraphic.
+      - Si se pide "precio" de BNB o BTC, responde con el precio actual.
+      - Si se solicita "todos los indicadores", "indicadores técnicos completos" o "actualización", envía un reporte completo.
+      - Si se solicitan indicadores individuales (RSI, ADX, MACD, SMA, CMF), responde solo con ese valor.
+      - Si se consulta la dominancia o BTC, usa OpenAI para generar un análisis breve y enfocado.
+      - En otro caso, realiza una consulta general a OpenAI.
     """
     print(f"[DEBUG] Update recibido: {update}")
     message_obj = update.get("message", {})
@@ -62,7 +62,7 @@ def handle_telegram_message(update):
     print(f"[DEBUG] Procesando mensaje de @{username}: {message_text}")
 
     # Rama: Solicitud de gráfico
-    if any(phrase in lower_msg for phrase in ["grafico", "gráfico"]):
+    if "grafico" in lower_msg or "gráfico" in lower_msg:
         try:
             from PrintGraphic import send_graphic, extract_timeframe
             timeframe_req = extract_timeframe(lower_msg)
@@ -76,36 +76,47 @@ def handle_telegram_message(update):
             print(f"[Error] Generando gráfico: {e}")
         return
 
-    # Rama: Solicitud de precio actual de BNB
-    if "precio" in lower_msg and "bnb" in lower_msg:
-        try:
-            data = fetch_data(SYMBOL, TIMEFRAME)
-            indicators = calculate_indicators(data)
-            price = indicators.get('price', None)
-            if price is not None:
-                send_telegram_message(f"El precio actual de {SYMBOL} es: ${price:.2f}", chat_id)
-                print(f"[DEBUG] Precio enviado: ${price:.2f}")
-            else:
-                send_telegram_message("No se pudo determinar el precio actual.", chat_id)
-        except Exception as e:
-            send_telegram_message(f"Error al obtener el precio: {e}", chat_id)
-            print(f"[Error] Precio: {e}")
-        return
+    # Rama: Solicitud de precio
+    if "precio" in lower_msg:
+        if "bnb" in lower_msg:
+            try:
+                data = fetch_data(SYMBOL, TIMEFRAME)
+                indicators = calculate_indicators(data)
+                price = indicators.get('price', None)
+                if price is not None:
+                    send_telegram_message(f"El precio actual de {SYMBOL} es: ${price:.2f}", chat_id)
+                    print(f"[DEBUG] Precio enviado: ${price:.2f}")
+                else:
+                    send_telegram_message("No se pudo determinar el precio actual.", chat_id)
+            except Exception as e:
+                send_telegram_message(f"Error al obtener el precio: {e}", chat_id)
+                print(f"[Error] Precio: {e}")
+            return
+        if "btc" in lower_msg:
+            try:
+                btc_price = fetch_btc_price()
+                send_telegram_message(f"El precio actual de BTC es: ${btc_price:.2f}", chat_id)
+                print(f"[DEBUG] BTC Precio enviado: ${btc_price:.2f}")
+            except Exception as e:
+                send_telegram_message(f"Error al obtener el precio de BTC: {e}", chat_id)
+                print(f"[Error] BTC Precio: {e}")
+            return
 
     # Rama: Solicitud de reporte completo de indicadores técnicos
-    if ("todos" in lower_msg and "indicador" in lower_msg) or ("indicadores" in lower_msg and ("técnicos" in lower_msg or "completos" in lower_msg)):
+    if ("todos" in lower_msg and "indicador" in lower_msg) or ("indicadores" in lower_msg and ("técnicos" in lower_msg or "completos" in lower_msg or "actualización" in lower_msg)):
         try:
             data = fetch_data(SYMBOL, TIMEFRAME)
             indicators = calculate_indicators(data)
             message = (
-                f"Hola agente @{username}, aquí tienes el reporte completo de indicadores técnicos para {SYMBOL}:\n\n"
-                f"Precio: ${indicators['price']:.2f}\n"
-                f"RSI: {indicators['rsi']:.2f}\n"
-                f"ADX: {indicators['adx']:.2f}\n"
-                f"MACD: {indicators['macd']:.2f} (Señal: {indicators['macd_signal']:.2f})\n"
-                f"SMA10: {indicators['sma_10']:.2f} | SMA25: {indicators['sma_25']:.2f} | SMA50: {indicators['sma_50']:.2f}\n"
-                f"CMF: {indicators['cmf']:.2f}\n"
-                f"Bollinger Bands: Low ${indicators['bb_low']:.2f}, Medium ${indicators['bb_medium']:.2f}, High ${indicators['bb_high']:.2f}\n"
+                f"Saludos, soy Higgs, Agente X.\n\n"
+                f"Reporte completo de indicadores para {SYMBOL}:\n"
+                f"• Precio: ${indicators['price']:.2f}\n"
+                f"• RSI: {indicators['rsi']:.2f}\n"
+                f"• ADX: {indicators['adx']:.2f}\n"
+                f"• MACD: {indicators['macd']:.2f} (Señal: {indicators['macd_signal']:.2f})\n"
+                f"• SMA10: {indicators['sma_10']:.2f} | SMA25: {indicators['sma_25']:.2f} | SMA50: {indicators['sma_50']:.2f}\n"
+                f"• CMF: {indicators['cmf']:.2f}\n"
+                f"• Bollinger Bands: Bajo ${indicators['bb_low']:.2f}, Medio ${indicators['bb_medium']:.2f}, Alto ${indicators['bb_high']:.2f}\n"
             )
             send_telegram_message(message, chat_id)
             print("[DEBUG] Reporte completo enviado.")
@@ -152,12 +163,14 @@ def handle_telegram_message(update):
         try:
             data = fetch_data(SYMBOL, TIMEFRAME)
             indicators = calculate_indicators(data)
-            message = (f"Valores SMA para {SYMBOL}:\n"
-                       f"SMA10: {indicators['sma_10']:.2f}\n"
-                       f"SMA25: {indicators['sma_25']:.2f}\n"
-                       f"SMA50: {indicators['sma_50']:.2f}")
+            message = (
+                f"Valores SMA para {SYMBOL}:\n"
+                f"• SMA10: {indicators['sma_10']:.2f}\n"
+                f"• SMA25: {indicators['sma_25']:.2f}\n"
+                f"• SMA50: {indicators['sma_50']:.2f}"
+            )
             send_telegram_message(message, chat_id)
-            print(f"[DEBUG] SMA enviados.")
+            print("[DEBUG] SMA enviados.")
         except Exception as e:
             send_telegram_message(f"Error al obtener las SMA: {e}", chat_id)
             print(f"[Error] SMA: {e}")
@@ -174,8 +187,8 @@ def handle_telegram_message(update):
             print(f"[Error] CMF: {e}")
         return
 
-    # Rama: Solicitud de análisis sobre dominancia/BTC
-    if "dominancia" in lower_msg or "btc" in lower_msg:
+    # Rama: Solicitud de análisis de dominancia/BTC
+    if "dominancia" in lower_msg or ("btc" in lower_msg and "precio" not in lower_msg):
         try:
             try:
                 btc_price = fetch_btc_price()
@@ -190,9 +203,12 @@ def handle_telegram_message(update):
             if btc_price is None or btc_dominance is None:
                 answer = "No se pudo obtener la información de BTC en este momento."
             else:
-                context = (f"El precio actual de BTC es ${btc_price:.2f} y su dominancia es del {btc_dominance:.2f}%. "
-                           "Analiza detalladamente esta situación, detecta posibles manipulaciones y evalúa oportunidades de entrada en corto para altcoins.")
-                system_prompt = ("Eres un analista financiero experto. Interpreta la situación del mercado de criptomonedas y proporciona insights precisos en español.")
+                # Se calcula la diferencia porcentual entre el cambio de precio y el cambio de dominancia
+                context = (f"BTC: precio ${btc_price:.2f}, dominancia {btc_dominance:.2f}%. "
+                           "Interpreta de forma precisa la relación entre el precio y la dominancia, "
+                           "y evalúa si se observa una situación inusual que sugiera manipulación, "
+                           "para sugerir una posible entrada en corto para altcoins.")
+                system_prompt = ("Eres un analista financiero experto. Proporciona un análisis conciso en español basado en la relación entre el precio de BTC y su dominancia.")
                 print(f"[DEBUG] Análisis dominancia: BTC ${btc_price:.2f}, Dominancia {btc_dominance:.2f}%")
                 response = openai.ChatCompletion.create(
                     model="gpt-4",
@@ -211,11 +227,11 @@ def handle_telegram_message(update):
         send_telegram_message(answer, chat_id)
         return
 
-    # Rama: Consulta general a OpenAI para otros mensajes (por ejemplo, "hola", "/start", etc.)
+    # Rama: Consulta general a OpenAI para otros mensajes (ej. "hola", "/start", etc.)
     try:
         language = detect_language(message_text)
     except Exception as e:
-        language = 'en'
+        language = 'es'
         print(f"[Error] detect_language: {e}")
     
     try:
@@ -226,44 +242,21 @@ def handle_telegram_message(update):
         print(f"[Error] Obteniendo datos técnicos: {e}")
         return
 
-    if language == 'es':
-        system_prompt = (
-            "Eres Higgs X, el agente de inteligencia encargado de vigilar el ecosistema de Virtuals. "
-            "Cuando respondas, preséntate como 'Higgs X' y utiliza un tono conciso, serio y misterioso."
-        )
-        context = (
-            f"Hola agente @{username}, aquí Higgs X al habla. Mi misión es vigilar el ecosistema de Virtuals.\n\n"
-            f"Indicadores técnicos actuales para {SYMBOL}:\n"
-            f"- Precio: ${indicators['price']:.2f}\n"
-            f"- RSI: {indicators['rsi']:.2f}\n"
-            f"- MACD: {indicators['macd']:.2f} (Señal: {indicators['macd_signal']:.2f})\n"
-            f"- SMA10: {indicators['sma_10']:.2f} | SMA25: {indicators['sma_25']:.2f} | SMA50: {indicators['sma_50']:.2f}\n"
-            f"- Volumen: {indicators['volume_level']} (CMF: {indicators['cmf']:.2f})\n\n"
-            "Bandas de Bollinger:\n"
-            f"Low: ${indicators['bb_low']:.2f}\n"
-            f"Medium: ${indicators['bb_medium']:.2f}\n"
-            f"High: ${indicators['bb_high']:.2f}\n\n"
-            f"Pregunta: {message_text}"
-        )
-    else:
-        system_prompt = (
-            "You are Higgs X, the intelligence agent responsible for monitoring the Binance ecosystem. "
-            "Respond concisely and with a touch of mystery, addressing the user by name."
-        )
-        context = (
-            f"Hello agent @{username}, this is Higgs X speaking. My mission is to monitor the Virtuals ecosystem.\n\n"
-            f"Technical indicators for {SYMBOL}:\n"
-            f"- Price: ${indicators['price']:.2f}\n"
-            f"- RSI: {indicators['rsi']:.2f}\n"
-            f"- MACD: {indicators['macd']:.2f} (Signal: {indicators['macd_signal']:.2f})\n"
-            f"- SMA10: {indicators['sma_10']:.2f} | SMA25: {indicators['sma_25']:.2f} | SMA50: {indicators['sma_50']:.2f}\n"
-            f"- Volume: {indicators['volume_level']} (CMF: {indicators['cmf']:.2f})\n\n"
-            "Bollinger Bands:\n"
-            f"Low: ${indicators['bb_low']:.2f}\n"
-            f"Medium: ${indicators['bb_medium']:.2f}\n"
-            f"High: ${indicators['bb_high']:.2f}\n\n"
-            f"Question: {message_text}"
-        )
+    system_prompt = (
+        "Eres Higgs, Agente X. Hace años me introdujeron en la cadena de bloques con un propósito: infiltrarme en este vasto ecosistema, rastrear los movimientos de las ballenas y brindar información en tiempo real. "
+        "Responde de forma concisa, seria y con un toque de misterio, siempre en español."
+    )
+    context = (
+        f"Hola agente @{username}, aquí Higgs, Agente X, a tu servicio.\n\n"
+        f"Indicadores técnicos actuales para {SYMBOL}:\n"
+        f"• Precio: ${indicators['price']:.2f}\n"
+        f"• RSI: {indicators['rsi']:.2f}\n"
+        f"• MACD: {indicators['macd']:.2f} (Señal: {indicators['macd_signal']:.2f})\n"
+        f"• SMA10: {indicators['sma_10']:.2f} | SMA25: {indicators['sma_25']:.2f} | SMA50: {indicators['sma_50']:.2f}\n"
+        f"• Volumen: {indicators['volume_level']} (CMF: {indicators['cmf']:.2f})\n"
+        f"• Bollinger Bands: Bajo ${indicators['bb_low']:.2f}, Medio ${indicators['bb_medium']:.2f}, Alto ${indicators['bb_high']:.2f}\n\n"
+        f"Pregunta: {message_text}"
+    )
 
     try:
         print("[DEBUG] Enviando consulta general a OpenAI...")
@@ -277,6 +270,7 @@ def handle_telegram_message(update):
             temperature=0.7
         )
         answer = response.choices[0].message.content.strip()
+        # Escapar caracteres problemáticos
         answer = answer.replace("_", "\\_").replace("*", "\\*").replace("[", "\\[").replace("`", "\\`")
         print(f"[DEBUG] Respuesta OpenAI general: {answer}")
     except Exception as e:

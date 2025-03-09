@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 import time
 import logging
 from market import fetch_data, fetch_btc_price
@@ -22,7 +21,7 @@ def monitor_market():
         try:
             data = fetch_data(timeframe=TIMEFRAME)
             
-            # Evaluar señales técnicas robustas
+            # Evaluar señales técnicas
             signal_message = aggregate_signals(data)
             if signal_message:
                 msg = "Señales detectadas:\n" + signal_message
@@ -31,7 +30,7 @@ def monitor_market():
             else:
                 logging.info("No se detectaron señales en este ciclo.")
             
-            # Verificar dominancia de BTC para detectar manipulación
+            # Verificar dominancia de BTC
             btc_dominance = fetch_btc_dominance()
             btc_price = fetch_btc_price()
             if last_btc_dominance is not None and last_btc_price is not None:
@@ -45,7 +44,7 @@ def monitor_market():
             last_btc_dominance = btc_dominance
             last_btc_price = btc_price
             
-            time.sleep(300)  # 5 minutos
+            time.sleep(300)
         except Exception as e:
             logging.error("Error en monitor_market: %s", e)
             time.sleep(60)

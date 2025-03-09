@@ -1,25 +1,38 @@
 import time
 import pandas as pd
 import matplotlib
-matplotlib.use('Agg')
+matplotlib.use('Agg')  # Usa backend sin GUI
 import matplotlib.pyplot as plt
 import io
 import requests
 import re
 from config import SYMBOL, TELEGRAM_TOKEN
 import mplfinance as mpf
-from market import fetch_data
+from market import fetch_data  # Usa la función actualizada de mercado
 
+# Mapeo de posibles intervalos válidos
 TIMEFRAME_MAPPING = {
-    "1m": "1m", "3m": "3m", "5m": "5m", "10m": "5m",
-    "15m": "15m", "30m": "30m", "1h": "1h", "2h": "2h",
-    "4h": "4h", "6h": "6h", "8h": "8h", "12h": "12h",
-    "1d": "1d", "3d": "3d", "1w": "1w", "1M": "1M"
+    "1m": "1m",
+    "3m": "3m",
+    "5m": "5m",
+    "10m": "5m",      # Si se ingresa 10m, se mapea a 5m (ajustable)
+    "15m": "15m",
+    "30m": "30m",
+    "1h": "1h",
+    "2h": "2h",
+    "4h": "4h",
+    "6h": "6h",
+    "8h": "8h",
+    "12h": "12h",
+    "1d": "1d",
+    "3d": "3d",
+    "1w": "1w",
+    "1M": "1M"
 }
 
 def extract_timeframe(text):
     """
-    Extrae el intervalo de tiempo (timeframe) de la cadena 'text'.
+    Extrae el intervalo de tiempo de la cadena 'text' utilizando regex.
     Retorna el valor mapeado o "1h" por defecto.
     """
     pattern = r'\b(\d+m|\d+h|\d+d|\d+w|\d+M)\b'
@@ -30,24 +43,32 @@ def extract_timeframe(text):
     return "1h"
 
 def fetch_chart_data(symbol=SYMBOL, timeframe="1h", limit=100):
-    """Obtiene datos OHLCV para el gráfico usando fetch_data."""
+    """
+    Obtiene datos OHLCV para el gráfico usando la función fetch_data.
+    Se asegura de que el índice sea un DatetimeIndex.
+    """
     data = fetch_data(symbol=symbol, timeframe=timeframe, limit=limit)
     data = data.copy()
     if 'volume' not in data.columns:
         data['volume'] = 0
+    # Establecer 'timestamp' como índice para que mplfinance lo reconozca
+    data.set_index('timestamp', inplace=True)
     return data
 
 def send_graphic(chat_id, timeframe_input="1h", chart_type="line"):
     """
-    Genera un gráfico y lo envía a Telegram.
+    Genera un gráfico de las últimas velas y lo envía a Telegram.
+    
     Parámetros:
-      - timeframe_input: intervalo solicitado.
-      - chart_type: 'line' o 'candlestick'.
+      - timeframe_input: intervalo solicitado (se mapea a un valor válido).
+      - chart_type: 'line' para gráfico lineal o 'candlestick' para velas japonesas.
     """
     try:
+        # Extraer y validar el intervalo
         timeframe = extract_timeframe(timeframe_input)
         data = fetch_chart_data(SYMBOL, timeframe, limit=100)
         
+        # Calcular soportes, resistencias y medias móviles
         support = data['close'].min()
         resistance = data['close'].max()
         sma20 = data['close'].rolling(window=20).mean()
@@ -56,8 +77,10 @@ def send_graphic(chat_id, timeframe_input="1h", chart_type="line"):
         buf = io.BytesIO()
         caption = f"Gráfico de {SYMBOL} - {timeframe}"
         
+        # Crear un estilo futurista personalizado
         mc = mpf.make_marketcolors(
-            up='#00ff00', down='#ff4500',
+            up='#00ff00',    # verde neón
+            down='#ff4500',  # rojo neón
             edge={'up': '#00ff00', 'down': '#ff4500'},
             wick={'up': '#00ff00', 'down': '#ff4500'},
             volume='#555555'
@@ -67,13 +90,15 @@ def send_graphic(chat_id, timeframe_input="1h", chart_type="line"):
             marketcolors=mc,
             facecolor='#0f0f0f',
             gridstyle='--',
-            rc={'font.size': 10,
+            rc={
+                'font.size': 10,
                 'figure.facecolor': '#0f0f0f',
                 'axes.facecolor': '#0f0f0f',
                 'axes.edgecolor': 'white',
                 'axes.labelcolor': 'white',
                 'xtick.color': 'white',
-                'ytick.color': 'white'}
+                'ytick.color': 'white'
+            }
         )
         
         if chart_type.lower() == "candlestick":
@@ -108,7 +133,7 @@ def send_graphic(chat_id, timeframe_input="1h", chart_type="line"):
             plt.legend()
             plt.grid(True, linestyle="--", alpha=0.7, color='gray')
             plt.gca().set_facecolor('#0f0f0f')
-            plt.savefig(buf, format='png')
+            plt.savefig(buf, format="png")
             plt.close()
         
         buf.seek(0)

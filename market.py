@@ -10,7 +10,7 @@ def fetch_data(symbol=TIMEFRAME, timeframe=TIMEFRAME, limit=100):
     url = f"https://api.coingecko.com/api/v3/coins/{COINGECKO_COIN_ID}/ohlc"
     params = {
         "vs_currency": "usd",
-        "days": 1  # Datos de 1 día (candles de 1h o resolución de 5 minutos, según la API)
+        "days": 14  # Datos de 1 día (candles de 1h o resolución de 5 minutos, según la API)
     }
     retries = 0
     while retries < MAX_RETRIES:

@@ -1,4 +1,3 @@
-# indicators.py
 import pandas as pd
 import requests
 from ta.momentum import RSIIndicator
@@ -7,6 +6,10 @@ from ta.volatility import BollingerBands
 
 def calculate_indicators(data):
     """Calcula indicadores técnicos: RSI, MACD, ADX, SMAs y Bandas de Bollinger."""
+    # Verificar que hay suficientes datos (al menos 2 registros)
+    if len(data) < 2:
+        raise ValueError("Datos insuficientes para calcular indicadores técnicos (se requieren al menos 2 registros).")
+    
     close = data['close']
     high = data['high']
     low = data['low']
@@ -15,22 +18,40 @@ def calculate_indicators(data):
     # Dado que no se dispone de volumen real, se asigna un valor neutro
     cmf = 0
     volume_level = "N/A"
+    
+    # Calcular SMAs y asignar None si la serie está vacía
+    sma10_series = SMAIndicator(close, window=10).sma_indicator().dropna()
+    sma_10 = sma10_series.iloc[-1] if not sma10_series.empty else None
+    sma25_series = SMAIndicator(close, window=25).sma_indicator().dropna()
+    sma_25 = sma25_series.iloc[-1] if not sma25_series.empty else None
+    sma50_series = SMAIndicator(close, window=50).sma_indicator().dropna()
+    sma_50 = sma50_series.iloc[-1] if not sma50_series.empty else None
 
-    sma_10 = SMAIndicator(close, window=10).sma_indicator().iloc[-1]
-    sma_25 = SMAIndicator(close, window=25).sma_indicator().iloc[-1]
-    sma_50 = SMAIndicator(close, window=50).sma_indicator().iloc[-1]
+    # Calcular MACD y su señal
+    macd_series = MACD(close).macd().dropna()
+    macd = macd_series.iloc[-1] if not macd_series.empty else None
+    macd_signal_series = MACD(close).macd_signal().dropna()
+    macd_signal = macd_signal_series.iloc[-1] if not macd_signal_series.empty else None
 
-    macd_indicator = MACD(close)
-    macd = macd_indicator.macd().iloc[-1]
-    macd_signal = macd_indicator.macd_signal().iloc[-1]
+    # Calcular RSI
+    rsi_series = RSIIndicator(close, window=14).rsi().dropna()
+    rsi = rsi_series.iloc[-1] if not rsi_series.empty else None
 
-    rsi = RSIIndicator(close, window=14).rsi().iloc[-1]
-    adx = ADXIndicator(high, low, close).adx().iloc[-1]
+    # Calcular ADX
+    adx_series = ADXIndicator(high, low, close).adx().dropna()
+    adx = adx_series.iloc[-1] if not adx_series.empty else None
 
+    # Calcular Bandas de Bollinger
     bb_indicator = BollingerBands(close, window=20, window_dev=2)
-    bb_low = bb_indicator.bollinger_lband().iloc[-1]
-    bb_medium = bb_indicator.bollinger_mavg().iloc[-1]
-    bb_high = bb_indicator.bollinger_hband().iloc[-1]
+    bb_low_series = bb_indicator.bollinger_lband().dropna()
+    bb_low = bb_low_series.iloc[-1] if not bb_low_series.empty else None
+    bb_medium_series = bb_indicator.bollinger_mavg().dropna()
+    bb_medium = bb_medium_series.iloc[-1] if not bb_medium_series.empty else None
+    bb_high_series = bb_indicator.bollinger_hband().dropna()
+    bb_high = bb_high_series.iloc[-1] if not bb_high_series.empty else None
+
+    # Si hay al menos 2 registros, usar el penúltimo valor para prev_close; de lo contrario, usar el último
+    prev_close = close.iloc[-2] if len(close) >= 2 else close.iloc[-1]
 
     indicators = {
         'price': close.iloc[-1],
@@ -46,7 +67,7 @@ def calculate_indicators(data):
         'bb_low': bb_low,
         'bb_medium': bb_medium,
         'bb_high': bb_high,
-        'prev_close': close.iloc[-2] if len(close) >= 2 else close.iloc[-1]
+        'prev_close': prev_close
     }
     return indicators
 
@@ -56,12 +77,16 @@ def check_cross_signals(data):
     Se comparan los valores de las últimas dos velas para identificar el cruce.
     """
     close = data['close']
-    sma10 = SMAIndicator(close, window=10).sma_indicator()
-    sma25 = SMAIndicator(close, window=25).sma_indicator()
-    sma50 = SMAIndicator(close, window=50).sma_indicator()
-    
     if len(close) < 2:
         return False, False
+
+    sma10 = SMAIndicator(close, window=10).sma_indicator().dropna()
+    sma25 = SMAIndicator(close, window=25).sma_indicator().dropna()
+    sma50 = SMAIndicator(close, window=50).sma_indicator().dropna()
+    
+    if len(sma10) < 2 or len(sma25) < 2 or len(sma50) < 2:
+        return False, False
+
     sma10_prev, sma10_curr = sma10.iloc[-2], sma10.iloc[-1]
     sma25_prev, sma25_curr = sma25.iloc[-2], sma25.iloc[-1]
     sma50_prev, sma50_curr = sma50.iloc[-2], sma50.iloc[-1]

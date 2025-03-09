@@ -6,13 +6,12 @@ from config import COINGECKO_COIN_ID, MAX_RETRIES
 def fetch_data(symbol="1h", timeframe="1h", limit=100):
     """
     Obtiene datos OHLC utilizando la API de CoinGecko.
-    Se solicita el máximo de datos ('days': 'max') y luego se filtran
-    los registros de los últimos 14 días para obtener velas de 1h.
+    Se solicita datos de 14 días para obtener velas de 1h.
     """
     url = f"https://api.coingecko.com/api/v3/coins/{COINGECKO_COIN_ID}/ohlc"
     params = {
         "vs_currency": "usd",
-        "days": "max"  # Obtiene la mayor cantidad de datos disponibles
+        "days": 14  # Se solicitan datos de 14 días para obtener velas de 1h
     }
     retries = 0
     while retries < MAX_RETRIES:
@@ -33,7 +32,7 @@ def fetch_data(symbol="1h", timeframe="1h", limit=100):
             if df.empty or len(df) < 2:
                 raise ValueError("Datos insuficientes devueltos por la API después de filtrar.")
             
-            # Como la API no proporciona volumen, se asigna 0
+            # La API no proporciona volumen, se asigna 0
             df['volume'] = 0
             print(f"[INFO] Se obtuvieron {len(df)} registros de OHLC después de filtrar por 14 días.")
             return df

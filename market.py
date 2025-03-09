@@ -26,12 +26,10 @@ def fetch_data(symbol="1h", timeframe="1h", limit=100):
             df = pd.DataFrame(data, columns=['timestamp', 'open', 'high', 'low', 'close'])
             df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
             
-            # Se asume que la API devuelve datos del período solicitado
             if df.empty or len(df) < 2:
                 raise ValueError("Datos insuficientes devueltos por la API.")
             
-            # La API no proporciona volumen, se asigna 0
-            df['volume'] = 0
+            df['volume'] = 0  # La API no proporciona volumen
             print(f"[INFO] Se obtuvieron {len(df)} registros de OHLC.")
             return df
         except Exception as e:

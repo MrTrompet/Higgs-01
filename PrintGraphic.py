@@ -1,5 +1,3 @@
-# PrintGraphic.py
-
 import time
 import pandas as pd
 import matplotlib
@@ -10,14 +8,14 @@ import requests
 import re
 from config import SYMBOL, TELEGRAM_TOKEN
 import mplfinance as mpf
-from market import fetch_data  # Ahora usa nuestra función actualizada de mercado
+from market import fetch_data
 
-# Mapeo de posibles entradas a intervalos válidos
+# Mapeo de intervalos válidos
 TIMEFRAME_MAPPING = {
     "1m": "1m",
     "3m": "3m",
     "5m": "5m",
-    "10m": "5m",      # Si se ingresa 10m, lo mapeamos a 5m (ajustable)
+    "10m": "5m",
     "15m": "15m",
     "30m": "30m",
     "1h": "1h",
@@ -34,7 +32,7 @@ TIMEFRAME_MAPPING = {
 
 def extract_timeframe(text):
     """
-    Extrae la temporalidad de la cadena 'text' utilizando regex.
+    Extrae el timeframe de la cadena 'text' mediante regex.
     Retorna el valor mapeado o "1h" por defecto.
     """
     pattern = r'\b(\d+m|\d+h|\d+d|\d+w|\d+M)\b'
@@ -45,7 +43,7 @@ def extract_timeframe(text):
     return "1h"
 
 def fetch_chart_data(symbol=SYMBOL, timeframe="1h", limit=100):
-    """Obtiene datos OHLCV para el gráfico usando la nueva función fetch_data."""
+    """Obtiene datos OHLCV para el gráfico usando fetch_data."""
     data = fetch_data(symbol=symbol, timeframe=timeframe, limit=limit)
     data = data.copy()
     if 'volume' not in data.columns:
@@ -56,15 +54,13 @@ def send_graphic(chat_id, timeframe_input="1h", chart_type="line"):
     """
     Genera un gráfico de las últimas velas y lo envía a Telegram.
     Parámetros:
-      - timeframe_input: temporalidad solicitada (se mapea a un valor válido).
-      - chart_type: 'line' para gráfico lineal o 'candlestick' para velas japonesas.
+      - timeframe_input: intervalo solicitado.
+      - chart_type: 'line' o 'candlestick'.
     """
     try:
-        # Extraer y validar el timeframe
         timeframe = extract_timeframe(timeframe_input)
         data = fetch_chart_data(SYMBOL, timeframe, limit=100)
         
-        # Calcular soportes, resistencias y medias móviles
         support = data['close'].min()
         resistance = data['close'].max()
         sma20 = data['close'].rolling(window=20).mean()
@@ -73,10 +69,10 @@ def send_graphic(chat_id, timeframe_input="1h", chart_type="line"):
         buf = io.BytesIO()
         caption = f"Gráfico de {SYMBOL} - {timeframe}"
         
-        # Crear un estilo futurista personalizado
+        # Estilo futurista personalizado
         mc = mpf.make_marketcolors(
-            up='#00ff00',    # verde neón
-            down='#ff4500',  # rojo neón
+            up='#00ff00',
+            down='#ff4500',
             edge={'up': '#00ff00', 'down': '#ff4500'},
             wick={'up': '#00ff00', 'down': '#ff4500'},
             volume='#555555'
@@ -98,7 +94,6 @@ def send_graphic(chat_id, timeframe_input="1h", chart_type="line"):
         )
         
         if chart_type.lower() == "candlestick":
-            # Preparar líneas para SMA y soporte/resistencia
             ap0 = mpf.make_addplot(sma20, color='#00ffff', width=1.0, linestyle='-')
             ap1 = mpf.make_addplot(sma50, color='#ff00ff', width=1.0, linestyle='-')
             sr_support = [support] * len(data)
@@ -118,7 +113,6 @@ def send_graphic(chat_id, timeframe_input="1h", chart_type="line"):
             fig.savefig(buf, dpi=150, format='png')
             plt.close(fig)
         else:
-            # Gráfico lineal con diseño futurista
             plt.figure(figsize=(10, 6))
             plt.plot(data.index, data['close'], label="Precio", color='#00ff00')
             plt.plot(data.index, sma20, label="SMA20", color='#00ffff')
@@ -140,6 +134,6 @@ def send_graphic(chat_id, timeframe_input="1h", chart_type="line"):
         data_payload = {'chat_id': chat_id, 'caption': caption}
         response = requests.post(url, data=data_payload, files=files)
         if response.status_code != 200:
-            print(f"Error al enviar el gráfico: {response.text}")
+            print(f"[Error] Al enviar el gráfico: {response.text}")
     except Exception as e:
-        print(f"Error en PrintGraphic.send_graphic: {e}")
+        print(f"[Error] En PrintGraphic.send_graphic: {e}")

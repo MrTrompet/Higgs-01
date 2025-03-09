@@ -14,4 +14,3 @@ def telegram_bot_loop():
         except Exception as e:
             print(f"[Error] En el bucle del bot: {e}")
             time.sleep(10)
-

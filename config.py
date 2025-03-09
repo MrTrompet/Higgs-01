@@ -6,14 +6,14 @@ feature_columns = ['open', 'high', 'low', 'close', 'volume', 'sma_25', 'bb_low',
 # --- Configuración de APIs y parámetros ---
 # CoinGecko: Define el activo a consultar y la API key (si la tienes)
 COINGECKO_COIN_ID = os.getenv("COINGECKO_COIN_ID", "binancecoin")
-COINGECKO_API_KEY = os.getenv("COINGECKO_API_KEY", )  # Tu API key
+COINGECKO_API_KEY = os.getenv("COINGECKO_API_KEY", "")  # Pon aquí tu API key de CoinGecko
 
 # Configuración de Telegram
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", )
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", )
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "")  # Pon aquí tu token de Telegram
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")  # Pon aquí el chat id (puede ser de grupo o canal)
 
 # API de OpenAI
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", )
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")  # Pon aquí tu API key de OpenAI
 
 # Configuración del mercado
 SYMBOL = os.getenv("SYMBOL", "BNB/USDT")  # Símbolo que usas en el análisis

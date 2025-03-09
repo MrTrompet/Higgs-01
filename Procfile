@@ -1,1 +1,1 @@
-worker: python monitor_market.py
+worker: python HiggsMain.py

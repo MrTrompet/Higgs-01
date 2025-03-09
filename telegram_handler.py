@@ -7,13 +7,16 @@ from market import fetch_data, fetch_btc_price
 from indicators import calculate_indicators, fetch_btc_dominance
 from ml_model import aggregate_signals
 
+# Configurar API key de OpenAI
 openai.api_key = OPENAI_API_KEY
 if not openai.api_key:
-    print("[DEBUG] La API key de OpenAI no está configurada correctamente.")
+    print("[DEBUG] ¡Atención! La API key de OpenAI no está configurada correctamente.")
 
+# Para pruebas, procesamos todos los mensajes
 START_TIME = 0
 
 def send_telegram_message(message, chat_id=None):
+    """Envía un mensaje al chat de Telegram."""
     if not chat_id:
         chat_id = TELEGRAM_CHAT_ID
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
@@ -26,6 +29,7 @@ def send_telegram_message(message, chat_id=None):
         print(f"[Error] En la conexión con Telegram: {e}")
 
 def detect_language(text):
+    """Detecta el idioma usando langdetect."""
     try:
         lang = detect(text)
         return 'es' if lang == 'es' else 'en'
@@ -34,6 +38,13 @@ def detect_language(text):
         return 'en'
 
 def handle_telegram_message(update):
+    """
+    Procesa los mensajes recibidos en Telegram y responde según el contenido:
+      - "grafico": llama a PrintGraphic.
+      - "indicador" o "bnb": responde con indicadores técnicos actuales para SYMBOL.
+      - "dominancia" o "btc": usa OpenAI para generar un análisis descriptivo sobre BTC.
+      - En otro caso, se utiliza OpenAI para responder de forma general basada en indicadores.
+    """
     print(f"[DEBUG] Update recibido: {update}")
     message_obj = update.get("message", {})
     message_text = message_obj.get("text", "").strip()
@@ -49,6 +60,7 @@ def handle_telegram_message(update):
     lower_msg = message_text.lower()
     print(f"[DEBUG] Procesando mensaje de @{username}: {message_text}")
 
+    # Rama: Solicitud de gráfico
     if any(phrase in lower_msg for phrase in ["grafico", "gráfico"]):
         try:
             from PrintGraphic import send_graphic, extract_timeframe
@@ -63,6 +75,7 @@ def handle_telegram_message(update):
             print(f"[Error] Generando gráfico: {e}")
         return
 
+    # Rama: Solicitud de indicadores técnicos para SYMBOL (ej. BNB)
     if "indicador" in lower_msg or "bnb" in lower_msg:
         try:
             data = fetch_data(SYMBOL, TIMEFRAME)
@@ -77,37 +90,50 @@ def handle_telegram_message(update):
             print(f"[Error] Indicadores: {e}")
         return
 
+    # Rama: Solicitud de análisis sobre dominancia/BTC
     if "dominancia" in lower_msg or "btc" in lower_msg:
         try:
-            btc_price = fetch_btc_price()
-            btc_dominance = fetch_btc_dominance()
-            context = (f"El precio actual de BTC es ${btc_price:.2f} y la dominancia es de {btc_dominance:.2f}%. "
-                       "Explica de forma concisa qué significa esta situación para el mercado, especialmente para las altcoins.")
-            system_prompt = ("Eres un analista financiero experto, responde de forma precisa y en español proporcionando insights.")
-            print(f"[DEBUG] Análisis dominancia: BTC ${btc_price:.2f}, Dominancia {btc_dominance:.2f}%")
-            response = openai.ChatCompletion.create(
-                model="gpt-4",
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": context}
-                ],
-                max_tokens=500,
-                temperature=0.7
-            )
-            answer = response.choices[0].message.content.strip()
-            print(f"[DEBUG] Respuesta OpenAI (dominancia): {answer}")
+            try:
+                btc_price = fetch_btc_price()
+            except Exception as e:
+                print(f"[Error] fetch_btc_price: {e}")
+                btc_price = None
+            try:
+                btc_dominance = fetch_btc_dominance()
+            except Exception as e:
+                print(f"[Error] fetch_btc_dominance: {e}")
+                btc_dominance = None
+            if btc_price is None or btc_dominance is None:
+                answer = "No se pudo obtener la información de BTC en este momento."
+            else:
+                context = (f"El precio actual de BTC es ${btc_price:.2f} y la dominancia es de {btc_dominance:.2f}%. "
+                           "Explica de forma concisa qué implica esta situación para el mercado, especialmente para las altcoins, y analiza posibles oportunidades para una entrada en corto.")
+                system_prompt = ("Eres un analista financiero experto, responde de forma precisa y en español proporcionando insights.")
+                print(f"[DEBUG] Análisis dominancia: BTC ${btc_price:.2f}, Dominancia {btc_dominance:.2f}%")
+                response = openai.ChatCompletion.create(
+                    model="gpt-4",
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": context}
+                    ],
+                    max_tokens=500,
+                    temperature=0.7
+                )
+                answer = response.choices[0].message.content.strip()
+                print(f"[DEBUG] Respuesta OpenAI (dominancia): {answer}")
         except Exception as e:
             answer = f"⚠️ Error al procesar el análisis de dominancia: {e}"
             print(f"[Error] Dominancia: {e}")
         send_telegram_message(answer, chat_id)
         return
 
+    # Rama: Consulta general a OpenAI para otros mensajes (ej. "hola", "/start", etc.)
     try:
         language = detect_language(message_text)
     except Exception as e:
         language = 'en'
         print(f"[Error] detect_language: {e}")
-
+    
     try:
         data = fetch_data(SYMBOL, TIMEFRAME)
         indicators = calculate_indicators(data)

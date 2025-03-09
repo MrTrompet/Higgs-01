@@ -7,6 +7,7 @@ def fetch_data(symbol="1h", timeframe="1h", limit=100):
     """
     Obtiene datos OHLC utilizando la API de CoinGecko.
     Se solicita datos de 14 días para obtener velas de 1h.
+    Nota: Se elimina el filtrado por fecha, ya que se asume que la API retorna solo datos para los últimos 14 días.
     """
     url = f"https://api.coingecko.com/api/v3/coins/{COINGECKO_COIN_ID}/ohlc"
     params = {
@@ -25,16 +26,13 @@ def fetch_data(symbol="1h", timeframe="1h", limit=100):
             df = pd.DataFrame(data, columns=['timestamp', 'open', 'high', 'low', 'close'])
             df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
             
-            # Filtrar para obtener solo los datos de los últimos 14 días
-            cutoff = datetime.now() - timedelta(days=14)
-            df = df[df['timestamp'] >= cutoff]
-            
+            # Comprobamos que se hayan obtenido al menos 2 registros para los cálculos
             if df.empty or len(df) < 2:
-                raise ValueError("Datos insuficientes devueltos por la API después de filtrar.")
+                raise ValueError("Datos insuficientes devueltos por la API.")
             
             # La API no proporciona volumen, se asigna 0
             df['volume'] = 0
-            print(f"[INFO] Se obtuvieron {len(df)} registros de OHLC después de filtrar por 14 días.")
+            print(f"[INFO] Se obtuvieron {len(df)} registros de OHLC.")
             return df
         except Exception as e:
             print(f"[Error] {e}. Reintentando... ({retries + 1}/{MAX_RETRIES})")

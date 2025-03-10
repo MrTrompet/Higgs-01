@@ -60,9 +60,9 @@ def handle_telegram_message(update):
     Procesa los mensajes recibidos en Telegram y responde en español según el contenido.
     
     Mejoras:
-      - Se reordenan los bloques para que consultas simples (ej. "precio de bnb") se procesen antes.
-      - Se eliminan términos genéricos ("bnb", "btc") de la condición compleja.
-      - Para consultas complejas se envía un contexto fresco a OpenAI (sin historial previo) junto con un system prompt reforzado.
+      - Se atienden primero consultas simples y solicitudes específicas.
+      - Para consultas complejas se envía un contexto fresco (sin historial previo) a OpenAI.
+      - El system prompt indica de forma explícita que se cuenta con datos en tiempo real, evitando respuestas por defecto.
     """
     global conversation_history, pending_requests
 
@@ -79,7 +79,7 @@ def handle_telegram_message(update):
     lower_msg = message_text.lower()
     print(f"[DEBUG] Procesando mensaje de @{username}: {message_text}")
 
-    # Actualizar historial (para otros casos) – aunque para respuestas técnicas complejas usaremos contexto fresco.
+    # Actualizar historial (usado para otros casos simples)
     if chat_id not in conversation_history:
         conversation_history[chat_id] = []
     conversation_history[chat_id].append({"role": "user", "content": message_text})
@@ -114,7 +114,7 @@ def handle_telegram_message(update):
             print(f"[Error] Generando gráfico: {e}")
         return
 
-    # Rama: Solicitudes específicas para BTC en 1h (se procesan antes de las consultas generales)
+    # Rama: Solicitudes específicas para BTC en 1h
     if "btc" in lower_msg and "1h" in lower_msg:
         try:
             btc_data = fetch_data("bitcoin", "1h")
@@ -159,7 +159,7 @@ def handle_telegram_message(update):
                 print(f"[Error] BTC Precio: {e}")
             return
 
-    # Rama: Consultas simples de indicadores individuales (rsi, adx, macd, sma, cmf)
+    # Rama: Consultas simples de indicadores individuales (ej. RSI)
     if "rsi" in lower_msg and "indicador" not in lower_msg:
         try:
             data = fetch_data(SYMBOL, TIMEFRAME)
@@ -172,10 +172,10 @@ def handle_telegram_message(update):
             send_telegram_message(f"Error al obtener el RSI: {e}", chat_id)
             print(f"[Error] RSI: {e}")
         return
-    # (Bloques para ADX, MACD, SMA, CMF se mantienen similares)
+    # (Se mantienen bloques similares para ADX, MACD, SMA, CMF)
 
     # Rama: Consultas complejas (análisis, comparaciones, estrategia, etc.)
-    # Aquí eliminamos "bnb" y "btc" de la condición para que no interfiera con las consultas simples.
+    # Aquí se utiliza un contexto fresco sin historial previo.
     if any(keyword in lower_msg for keyword in ["analiza", "análisis", "analisis", "compara", "estrategia", "entrada", "puntos de entrada", "actualizacion"]):
         try:
             data = fetch_data(SYMBOL, TIMEFRAME)
@@ -189,11 +189,10 @@ def handle_telegram_message(update):
             print(f"[Error] Datos técnicos: {e}")
             return
 
-        # Se crea un contexto fresco sin incluir conversación previa para evitar respuestas de fallback.
         system_prompt = (
             "Eres Higgs, Agente X, un analista digital con acceso a datos técnicos actualizados del mercado. "
-            "Tienes acceso en tiempo real a la información, y la siguiente es la data actualizada de indicadores técnicos. "
-            "No digas que no tienes acceso a datos. Responde de forma precisa, concisa y con un toque de misterio, en español."
+            "Utiliza exclusivamente la siguiente información para generar un análisis preciso. "
+            "No menciones que no tienes acceso a datos en tiempo real, pues ya cuentas con la data actualizada."
         )
         context = (
             f"Indicadores técnicos actuales para {SYMBOL}:\n"

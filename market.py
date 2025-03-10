@@ -3,12 +3,19 @@ import requests
 import pandas as pd
 from config import COINGECKO_COIN_ID, COINGECKO_API_KEY, MAX_RETRIES
 
+# Diccionario para mapear símbolos cortos a IDs oficiales de CoinGecko
+COIN_ID_MAP = {
+    "bnb": "binancecoin",
+    "btc": "bitcoin"
+    # Agrega otros mapeos según sea necesario
+}
+
 def fetch_data(symbol=None, timeframe="1h", days=14):
     """
     Obtiene datos OHLC utilizando la API de CoinGecko.
     
     Parámetros:
-      - symbol: ID de la moneda en CoinGecko (ej. "bitcoin", "binancecoin", etc.). 
+      - symbol: ID o símbolo corto de la moneda en CoinGecko (ej. "bitcoin", "bnb", etc.). 
                 Si no se especifica, se utiliza COINGECKO_COIN_ID del config.
       - timeframe: Intervalo de tiempo de las velas (por ejemplo, "1h"). Actualmente no se utiliza
                    para modificar la consulta, ya que CoinGecko determina el intervalo en función del parámetro "days".
@@ -16,7 +23,14 @@ def fetch_data(symbol=None, timeframe="1h", days=14):
       
     Se envía la API key en el header.
     """
-    coin_id = symbol if symbol is not None else COINGECKO_COIN_ID
+    if symbol is not None:
+        # Si el símbolo contiene una barra (ej. "BNB/USDT"), se toma solo la parte anterior a la barra
+        symbol = symbol.split('/')[0]
+        # Convertir a minúsculas y mapear al ID oficial usando el diccionario
+        coin_id = COIN_ID_MAP.get(symbol.lower(), symbol.lower())
+    else:
+        coin_id = COINGECKO_COIN_ID
+
     url = f"https://api.coingecko.com/api/v3/coins/{coin_id}/ohlc"
     params = {
         "vs_currency": "usd",
@@ -42,27 +56,3 @@ def fetch_data(symbol=None, timeframe="1h", days=14):
             print(f"[Error] {e}. Reintentando... ({retries + 1}/{MAX_RETRIES})")
             retries += 1
     raise Exception("No se pudieron obtener datos tras varios intentos.")
-
-def fetch_btc_price():
-    """
-    Obtiene el precio actual de BTC en USD usando CoinGecko.
-    """
-    url = "https://api.coingecko.com/api/v3/simple/price"
-    params = {"ids": "bitcoin", "vs_currencies": "usd"}
-    response = requests.get(url, params=params)
-    response.raise_for_status()
-    data = response.json()
-    if "bitcoin" not in data:
-        raise Exception("Error obteniendo el precio de BTC.")
-    return data["bitcoin"]["usd"]
-
-def fetch_historical_data(symbol=None, timeframe="1h", days=14):
-    """
-    Obtiene datos históricos utilizando fetch_data.
-    
-    Parámetros:
-      - symbol: ID de la moneda en CoinGecko (ej. "bitcoin", "binancecoin", etc.).
-      - timeframe: Intervalo de las velas (por ejemplo, "1h").
-      - days: Número de días de datos a obtener.
-    """
-    return fetch_data(symbol, timeframe, days)

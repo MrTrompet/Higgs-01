@@ -1,6 +1,6 @@
 import time
 import logging
-from market import fetch_data, fetch_btc_price
+from market import fetch_data, fetch_btc_price, fetch_historical_data
 from indicators import fetch_btc_dominance
 from ml_model import aggregate_signals
 from telegram_handler import send_telegram_message
@@ -36,8 +36,8 @@ def monitor_market():
             if last_btc_dominance is not None and last_btc_price is not None:
                 if btc_price < last_btc_price and btc_dominance > last_btc_dominance:
                     alert = (
-                        "📡Alerta de manipulación: BTC cae pero la dominancia aumenta. "
-                        "Se podria revisar una entrada en corto para altcoins, agente podrias hacer un analisis del total 2, seguire escaneando..."
+                        "📡 Alerta de manipulación: BTC cae pero la dominancia aumenta. "
+                        "Podrías revisar una entrada en corto para altcoins."
                     )
                     send_telegram_message(alert)
                     logging.info("Alerta de manipulación enviada a Telegram.")

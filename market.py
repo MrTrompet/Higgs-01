@@ -11,23 +11,23 @@ COIN_ID_MAP = {
     # Agrega otros mapeos si es necesario.
 }
 
-def fetch_data(symbol=None, timeframe="1h", days=14):
+def fetch_data(symbol=None, timeframe="1h", days=14, **kwargs):
     """
     Obtiene datos OHLC utilizando la API de CoinGecko.
     
     Parámetros:
       - symbol: ID o símbolo corto de la moneda en CoinGecko (ej. "bitcoin", "bnb", etc.). 
                 Si no se especifica, se utiliza COINGECKO_COIN_ID del config.
-      - timeframe: Intervalo de tiempo de las velas (por ejemplo, "1h"). Actualmente no se utiliza
-                   para modificar la consulta, ya que CoinGecko determina el intervalo en función del parámetro "days".
+      - timeframe: Intervalo de tiempo de las velas (ej. "1h"). Actualmente no se utiliza para modificar la consulta,
+                   ya que CoinGecko determina el intervalo en función del parámetro "days".
       - days: Número de días de datos a obtener. Por defecto se solicitan 14 días.
+      - **kwargs: Parámetros extra que se ignoran (por ejemplo, 'limit' usado por PrintGraphic).
       
     Se envía la API key en el header.
     """
     if symbol is not None:
         # Si el símbolo contiene una barra (ej. "BNB/USDT"), se toma solo la parte anterior a la barra.
         symbol = symbol.split('/')[0]
-        # Convertir a minúsculas y mapear al ID oficial usando el diccionario
         coin_id = COIN_ID_MAP.get(symbol.lower(), symbol.lower())
     else:
         coin_id = COINGECKO_COIN_ID
@@ -43,11 +43,11 @@ def fetch_data(symbol=None, timeframe="1h", days=14):
     while retries < MAX_RETRIES:
         try:
             response = requests.get(url, params=params, headers=headers)
-            # Manejo específico para 429: Too Many Requests
+            # Si se recibe un 429, espera 10 segundos antes de reintentar.
             if response.status_code == 429:
-                print(f"[Error] {response.status_code} Too Many Requests, esperando antes de reintentar...")
-                time.sleep(10)  # Espera 10 segundos antes de reintentar
-            response.raise_for_status()
+                print(f"[Error] {response.status_code} Too Many Requests, esperando 10 segundos...")
+                time.sleep(10)
+            response.raise_for_status()  # Levanta error si no es 200
             data = response.json()
             if not data or len(data) == 0:
                 raise ValueError("La respuesta de la API está vacía.")
@@ -77,13 +77,14 @@ def fetch_btc_price():
         raise Exception("Error obteniendo el precio de BTC.")
     return data["bitcoin"]["usd"]
 
-def fetch_historical_data(symbol=None, timeframe="1h", days=14):
+def fetch_historical_data(symbol=None, timeframe="1h", days=14, **kwargs):
     """
     Obtiene datos históricos utilizando fetch_data.
     
     Parámetros:
-      - symbol: ID o símbolo corto de la moneda en CoinGecko (ej. "bitcoin", "bnb", etc.).
-      - timeframe: Intervalo de las velas (por ejemplo, "1h").
+      - symbol: ID o símbolo corto de la moneda en CoinGecko.
+      - timeframe: Intervalo de las velas (ej. "1h").
       - days: Número de días de datos a obtener.
+      - **kwargs: Parámetros extra (ignorados).
     """
-    return fetch_data(symbol, timeframe, days)
+    return fetch_data(symbol, timeframe, days, **kwargs)

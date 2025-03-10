@@ -58,13 +58,12 @@ def analyze_sma_crosses(df):
 def handle_telegram_message(update):
     """
     Procesa los mensajes recibidos en Telegram y responde en español según el contenido.
-
-    Mejoras:
+    
+    Mejoras aplicadas:
     - Se combinan condiciones para interpretar consultas compuestas (por ejemplo, "precio" + "análisis").
-    - Se guarda el historial para un contexto más natural.
-    - Se incluye una rama específica para comparar BTC (precio y dominancia) y para BTC en 1h.
-    - Se maneja solicitudes pendientes (por ejemplo, búsqueda histórica de cruces de SMA).
-    - Cada bloque está protegido para que, si falla un indicador, no se rompa la conversación.
+    - Se almacena el historial de la conversación para un contexto más natural.
+    - Se incluye una rama específica para comparar BTC (precio y dominancia).
+    - Se maneja una solicitud pendiente para búsquedas históricas (por ejemplo, cruces de SMA).
     """
     global conversation_history, pending_requests
 
@@ -118,28 +117,9 @@ def handle_telegram_message(update):
             print(f"[Error] Generando gráfico: {e}")
         return
 
-    # Rama: Solicitudes específicas para BTC en 1h
-    if "btc" in lower_msg and "1h" in lower_msg:
-        try:
-            # Usamos "bitcoin" como símbolo para BTC
-            btc_data = fetch_data("bitcoin", "1h")
-            btc_indicators = calculate_indicators(btc_data)
-            answer = (
-                f"Indicadores BTC en 1h:\n"
-                f"• Precio: ${btc_indicators['price']:.2f}\n"
-                f"• RSI: {btc_indicators['rsi']:.2f}\n"
-                f"• MACD: {btc_indicators['macd']:.2f} (Señal: {btc_indicators['macd_signal']:.2f})\n"
-                f"• SMA10: {btc_indicators['sma_10']:.2f} | SMA25: {btc_indicators['sma_25']:.2f} | SMA50: {btc_indicators['sma_50']:.2f}"
-            )
-            send_telegram_message(answer, chat_id)
-            conversation_history[chat_id].append({"role": "assistant", "content": answer})
-        except Exception as e:
-            send_telegram_message("No se pudieron obtener datos técnicos en 1h para BTC. Revisa una plataforma de trading.", chat_id)
-            print(f"[Error] BTC 1h: {e}")
-        return
-
     # Rama: Consultas sobre cruces (SMA)
     if "cruce" in lower_msg or "cruces" in lower_msg:
+        # Si se menciona términos históricos (ej.: "anterior", "histórico")
         if any(word in lower_msg for word in ["anterior", "histórico", "historia"]):
             send_telegram_message("¿Deseas que busque información histórica sobre los cruces?", chat_id)
             pending_requests[chat_id] = "historical_sma_crosses"
@@ -155,20 +135,20 @@ def handle_telegram_message(update):
                 send_telegram_message(f"Error al analizar cruces: {e}", chat_id)
             return
 
-    # Rama: Consultas complejas (análisis, comparaciones o estrategia)
+    # Rama 2: Consultas complejas (análisis, comparaciones o estrategia)
     if any(keyword in lower_msg for keyword in ["analiza", "análisis", "analisis", "compara", "estrategia", "entrada", "puntos de entrada"]):
         # Caso especial: comparación de BTC (precio y dominancia)
         if "btc" in lower_msg and "dominancia" in lower_msg:
             try:
                 btc_price = fetch_btc_price()
-                btc_dominance = fetch_btc_dominance()  # Obtiene datos de dominancia de CoinGecko
+                btc_dominance = fetch_btc_dominance()
                 answer = f"Comparación BTC:\n• Precio: ${btc_price:.2f}\n• Dominancia: {btc_dominance:.2f}%\n"
                 if "1h" in lower_msg:
                     answer += ("Análisis en 1h: Si BTC baja y la dominancia aumenta, "
                                "podría tratarse de una señal de acumulación o manipulación. Mantente alerta.")
                 else:
                     answer += ("Esta comparación indica la distribución actual del mercado: "
-                               "una alta dominancia, aun cuando el precio fluctúa, puede reflejar movimientos relativos de altcoins.")
+                               "una alta dominancia aun cuando el precio fluctúa puede reflejar movimientos relativos de altcoins.")
                 send_telegram_message(answer, chat_id)
                 conversation_history[chat_id].append({"role": "assistant", "content": answer})
             except Exception as e:
@@ -188,10 +168,11 @@ def handle_telegram_message(update):
             return
 
         system_prompt = (
-            "Eres Higgs, Agente X. Tienes acceso a datos técnicos actuales del mercado y a la memoria de la conversación. "
+            "Eres Higgs, Agente X. Tienes acceso a los datos técnicos actuales del mercado y a la memoria de la conversación. "
             "Responde de forma concisa, seria y con un toque de misterio, siempre en español. "
-            "Integra los datos actuales (precio, RSI, MACD, SMA, Bollinger Bands, etc.) en tu análisis."
+            "Tu respuesta debe integrar los datos actuales (precio, RSI, MACD, SMA, Bollinger Bands, etc.) y dar un análisis coherente."
         )
+        # Se incluye el historial reciente (últimos 6 mensajes) para el contexto.
         recent_history = conversation_history[chat_id][-6:]
         messages = [{"role": "system", "content": system_prompt}]
         messages.extend(recent_history)
@@ -224,7 +205,7 @@ def handle_telegram_message(update):
             print(f"[Error] OpenAI: {e}")
         return
 
-    # Rama: Consultas simples de precio
+    # Rama 3: Consultas simples de precio
     if "precio" in lower_msg:
         if "bnb" in lower_msg or SYMBOL.lower() in lower_msg:
             try:
@@ -250,7 +231,7 @@ def handle_telegram_message(update):
                 print(f"[Error] BTC Precio: {e}")
             return
 
-    # Rama: Consultas específicas de indicadores individuales
+    # Rama 4: Consultas específicas de indicadores individuales
     if "rsi" in lower_msg and "indicador" not in lower_msg:
         try:
             data = fetch_data(SYMBOL, TIMEFRAME)
@@ -321,7 +302,7 @@ def handle_telegram_message(update):
             print(f"[Error] CMF: {e}")
         return
 
-    # Rama: Consulta general o fallback a OpenAI para otros mensajes
+    # Rama 5: Consulta general o fallback a OpenAI para otros mensajes
     try:
         language = detect_language(message_text)
     except Exception as e:

@@ -3,9 +3,10 @@ import openai
 import time
 from langdetect import detect
 from config import TELEGRAM_TOKEN, TELEGRAM_CHAT_ID, OPENAI_API_KEY, SYMBOL, TIMEFRAME
-from market import fetch_data, fetch_btc_price
+from market import fetch_data, fetch_btc_price, fetch_historical_data
 from indicators import calculate_indicators, fetch_btc_dominance
 from ml_model import aggregate_signals
+import pandas as pd
 
 # Configurar API key de OpenAI
 openai.api_key = OPENAI_API_KEY
@@ -14,8 +15,9 @@ if not openai.api_key:
 
 START_TIME = 0  # Procesamos todos los mensajes para pruebas
 
-# Variable global para almacenar el historial de cada chat (simulando memoria)
+# Variables globales para simular memoria y solicitudes pendientes
 conversation_history = {}
+pending_requests = {}
 
 def send_telegram_message(message, chat_id=None):
     """Envía un mensaje al chat de Telegram."""
@@ -34,17 +36,36 @@ def detect_language(text):
     """Forzamos siempre el español."""
     return 'es'
 
+def analyze_sma_crosses(df):
+    """
+    Analiza cruces de SMA (por ejemplo, entre SMA10 y SMA25) en datos históricos.
+    Retorna una cadena con el análisis.
+    """
+    if df.empty or len(df) < 25:
+        return "Datos insuficientes para analizar cruces."
+    df = df.copy()
+    df['sma_10'] = df['close'].rolling(window=10).mean()
+    df['sma_25'] = df['close'].rolling(window=25).mean()
+    last = df.iloc[-1]
+    prev = df.iloc[-2]
+    if prev['sma_10'] > prev['sma_25'] and last['sma_10'] < last['sma_25']:
+        return f"Se detectó un cruce bajista entre SMA10 y SMA25 el {last['timestamp'].strftime('%Y-%m-%d %H:%M:%S')}."
+    elif prev['sma_10'] < prev['sma_25'] and last['sma_10'] > last['sma_25']:
+        return f"Se detectó un cruce alcista entre SMA10 y SMA25 el {last['timestamp'].strftime('%Y-%m-%d %H:%M:%S')}."
+    else:
+        return "No se detectaron cruces significativos recientes entre SMA10 y SMA25."
+
 def handle_telegram_message(update):
     """
     Procesa los mensajes recibidos en Telegram y responde en español según el contenido.
     
     Mejoras aplicadas:
-    - Se reordenan y combinan condiciones para interpretar correctamente consultas que incluyan
-      múltiples palabras clave (por ejemplo, "precio" + "análisis" o "indicadores").
-    - Se agrega almacenamiento de historial por chat para mantener el contexto de la conversación.
+    - Se combinan condiciones para interpretar consultas compuestas (por ejemplo, "precio" + "análisis").
+    - Se almacena el historial de la conversación para un contexto más natural.
     - Se incluye una rama específica para comparar BTC (precio y dominancia).
+    - Se maneja una solicitud pendiente para búsquedas históricas (por ejemplo, cruces de SMA).
     """
-    global conversation_history
+    global conversation_history, pending_requests
 
     print(f"[DEBUG] Update recibido: {update}")
     message_obj = update.get("message", {})
@@ -66,6 +87,21 @@ def handle_telegram_message(update):
         conversation_history[chat_id] = []
     conversation_history[chat_id].append({"role": "user", "content": message_text})
 
+    # Rama: Manejo de solicitudes pendientes (por ejemplo, datos históricos)
+    if lower_msg in ["sí", "si", "por favor", "claro"]:
+        if chat_id in pending_requests:
+            if pending_requests[chat_id] == "historical_sma_crosses":
+                try:
+                    df = fetch_historical_data(SYMBOL, TIMEFRAME)
+                    analysis = analyze_sma_crosses(df)
+                    answer = f"Análisis histórico de cruces: {analysis}"
+                    send_telegram_message(answer, chat_id)
+                    conversation_history[chat_id].append({"role": "assistant", "content": answer})
+                except Exception as e:
+                    send_telegram_message(f"Error al obtener datos históricos: {e}", chat_id)
+                del pending_requests[chat_id]
+                return
+
     # Rama 1: Solicitud de gráfico (prioridad alta)
     if "grafico" in lower_msg or "gráfico" in lower_msg:
         try:
@@ -80,6 +116,24 @@ def handle_telegram_message(update):
             send_telegram_message(f"Error al generar gráfico: {e}", chat_id)
             print(f"[Error] Generando gráfico: {e}")
         return
+
+    # Rama: Consultas sobre cruces (SMA)
+    if "cruce" in lower_msg or "cruces" in lower_msg:
+        # Si se menciona términos históricos (ej.: "anterior", "histórico")
+        if any(word in lower_msg for word in ["anterior", "histórico", "historia"]):
+            send_telegram_message("¿Deseas que busque información histórica sobre los cruces?", chat_id)
+            pending_requests[chat_id] = "historical_sma_crosses"
+            conversation_history[chat_id].append({"role": "assistant", "content": "¿Deseas que busque información histórica sobre los cruces?"})
+            return
+        else:
+            try:
+                data = fetch_data(SYMBOL, TIMEFRAME)
+                analysis = analyze_sma_crosses(data)
+                send_telegram_message(analysis, chat_id)
+                conversation_history[chat_id].append({"role": "assistant", "content": analysis})
+            except Exception as e:
+                send_telegram_message(f"Error al analizar cruces: {e}", chat_id)
+            return
 
     # Rama 2: Consultas complejas (análisis, comparaciones o estrategia)
     if any(keyword in lower_msg for keyword in ["analiza", "análisis", "analisis", "compara", "estrategia", "entrada", "puntos de entrada"]):
@@ -102,7 +156,7 @@ def handle_telegram_message(update):
                 print(f"[Error] BTC Dominancia/Precio: {e}")
             return
 
-        # En otras consultas complejas se construye un contexto completo y se consulta a OpenAI.
+        # Para otras consultas complejas, se envía un contexto a OpenAI.
         try:
             data = fetch_data(SYMBOL, TIMEFRAME)
             indicators = calculate_indicators(data)
@@ -118,11 +172,10 @@ def handle_telegram_message(update):
             "Responde de forma concisa, seria y con un toque de misterio, siempre en español. "
             "Tu respuesta debe integrar los datos actuales (precio, RSI, MACD, SMA, Bollinger Bands, etc.) y dar un análisis coherente."
         )
-        # Incluir el historial reciente (se puede limitar a los últimos 6 mensajes para no sobrepasar el límite)
+        # Se incluye el historial reciente (últimos 6 mensajes) para el contexto.
         recent_history = conversation_history[chat_id][-6:]
         messages = [{"role": "system", "content": system_prompt}]
         messages.extend(recent_history)
-        # Agregar el contexto técnico actual
         context = (
             f"Indicadores técnicos actuales para {SYMBOL}:\n"
             f"• Precio: ${indicators['price']:.2f}\n"
@@ -154,7 +207,6 @@ def handle_telegram_message(update):
 
     # Rama 3: Consultas simples de precio
     if "precio" in lower_msg:
-        # Si la consulta es únicamente "precio" y menciona "bnb" o el símbolo, se envía solo el precio.
         if "bnb" in lower_msg or SYMBOL.lower() in lower_msg:
             try:
                 data = fetch_data(SYMBOL, TIMEFRAME)
@@ -257,7 +309,6 @@ def handle_telegram_message(update):
         language = 'es'
         print(f"[Error] detect_language: {e}")
 
-    # Intentar obtener datos técnicos; si falla, se envía un fallback
     try:
         data = fetch_data(SYMBOL, TIMEFRAME)
         indicators = calculate_indicators(data)
@@ -274,7 +325,6 @@ def handle_telegram_message(update):
         "Eres Higgs, Agente X. Tienes información actualizada del mercado y acceso a la memoria de la conversación. "
         "Responde de forma concisa, seria y con un toque de misterio, siempre en español."
     )
-    # Se utiliza el historial completo (o los últimos mensajes) para mantener el contexto.
     recent_history = conversation_history[chat_id][-6:]
     messages = [{"role": "system", "content": system_prompt}]
     messages.extend(recent_history)

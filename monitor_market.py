@@ -36,8 +36,8 @@ def monitor_market():
             if last_btc_dominance is not None and last_btc_price is not None:
                 if btc_price < last_btc_price and btc_dominance > last_btc_dominance:
                     alert = (
-                        "Alerta de manipulación: BTC cae pero la dominancia aumenta. "
-                        "Posible entrada en corto para altcoins."
+                        "📡Alerta de manipulación: BTC cae pero la dominancia aumenta. "
+                        "Se podria revisar una entrada en corto para altcoins, agente podrias hacer un analisis del total 2, seguire escaneando..."
                     )
                     send_telegram_message(alert)
                     logging.info("Alerta de manipulación enviada a Telegram.")

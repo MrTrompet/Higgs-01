@@ -1,4 +1,4 @@
-from indicators import calculate_indicators, check_cross_signals
+from indicators import calculate_indicators_for_bnb as calculate_indicators, check_cross_signals
 
 def aggregate_signals(data):
     """

@@ -4,8 +4,8 @@ import time
 from langdetect import detect
 from config import TELEGRAM_TOKEN, TELEGRAM_CHAT_ID, OPENAI_API_KEY, SYMBOL, TIMEFRAME
 from market import fetch_historical_data
-from indicators import calculate_indicators_for_bnb  # Función especializada para BNB
-from btc_indicators import get_btc_indicators       # Ahora se importa desde el módulo independiente
+from indicators import calculate_indicators_for_bnb
+from btc_indicators import get_btc_indicators
 from ml_model import aggregate_signals
 
 # Configurar API key de OpenAI
@@ -13,8 +13,8 @@ openai.api_key = OPENAI_API_KEY
 if not openai.api_key:
     print("[DEBUG] ¡Atención! La API key de OpenAI no está configurada correctamente.")
 
-# Variables globales para el historial de conversación y solicitudes pendientes
-conversation_history = {}  # Estructura: { chat_id: {"messages": [lista de mensajes], "context": { ... } } }
+# Variables globales para historial de conversación y solicitudes pendientes
+conversation_history = {}  # { chat_id: {"messages": [...], "context": {...} } }
 pending_requests = {}
 
 def send_telegram_message(message, chat_id=None):
@@ -54,7 +54,7 @@ def handle_telegram_message(update):
     Procesa los mensajes recibidos en Telegram y responde según el contenido.
     Se delega la obtención de indicadores a funciones especializadas:
       - Para BNB: calculate_indicators_for_bnb() en indicators.py.
-      - Para BTC: get_btc_indicators() en monitor_market.py.
+      - Para BTC: get_btc_indicators() en btc_indicators.py.
     Además, se detecta el activo solicitado y se actualiza el contexto.
     """
     global conversation_history, pending_requests
@@ -72,6 +72,12 @@ def handle_telegram_message(update):
 
     lower_msg = message_text.lower()
     print(f"[DEBUG] Procesando mensaje de @{username}: {message_text}")
+
+    # Si el mensaje es un saludo corto, responder y salir sin procesar el fallback
+    greetings = ["hola", "que onda", "buenos", "saludos"]
+    if lower_msg in greetings:
+        send_telegram_message("¡Hola! Estoy en la blockchain analizando el mercado, listo para ayudarte.", chat_id)
+        return
 
     # Actualizar historial de conversación
     if chat_id not in conversation_history:
@@ -105,95 +111,17 @@ def handle_telegram_message(update):
     # Detectar activo usando el mensaje y/o contexto
     activo = detectar_activo(message_text, conversation_history[chat_id].get("context"))
     if not activo:
-        # Si el activo no se detecta, se le solicita al usuario que lo especifique.
         send_telegram_message("¿Deseas la actualización de BNB o BTC?", chat_id)
         pending_requests[chat_id] = "seleccionar_activo"
         return
     else:
         conversation_history[chat_id]["context"]["activo"] = activo
 
-    # Rama: Consultas sobre cruces (SMA)
-    if "cruce" in lower_msg or "cruces" in lower_msg:
-        if any(word in lower_msg for word in ["anterior", "histórico", "historia"]):
-            send_telegram_message("¿Deseas que busque información histórica sobre los cruces?", chat_id)
-            pending_requests[chat_id] = "historical_sma_crosses"
-            conversation_history[chat_id]["messages"].append({"role": "assistant", "content": "¿Deseas que busque información histórica sobre los cruces?"})
-            return
-        else:
-            try:
-                df = fetch_historical_data(SYMBOL, TIMEFRAME)
-                analysis = analyze_sma_crosses(df)
-                send_telegram_message(analysis, chat_id)
-                conversation_history[chat_id]["messages"].append({"role": "assistant", "content": analysis})
-            except Exception as e:
-                send_telegram_message(f"Error al analizar cruces: {e}", chat_id)
-            return
-
-    # Rama: Consultas complejas (análisis, comparaciones, estrategia, actualización)
-    if any(keyword in lower_msg for keyword in ["analiza", "análisis", "analisis", "compara", "estrategia", "entrada", "puntos de entrada", "actualización"]):
-        # Caso especial para BTC: comparación de precio y dominancia
-        if activo == "BTC" and "dominancia" in lower_msg:
-            try:
-                btc_indicators = get_btc_indicators()
-                answer = f"Comparación BTC:\n• Precio: ${btc_indicators['price']:.2f}\n• Dominancia: {btc_indicators['dominance']:.2f}%\n"
-                if "1h" in lower_msg:
-                    answer += ("Análisis en 1h: Si BTC baja y la dominancia aumenta, podría tratarse de una señal de acumulación o manipulación. Mantente alerta.")
-                else:
-                    answer += ("Esta comparación indica la distribución actual del mercado: una alta dominancia aun cuando el precio fluctúa puede reflejar movimientos relativos de altcoins.")
-                send_telegram_message(answer, chat_id)
-                conversation_history[chat_id]["messages"].append({"role": "assistant", "content": answer})
-            except Exception as e:
-                send_telegram_message(f"Error al obtener datos de BTC: {e}", chat_id)
-            return
-        else:
-            try:
-                if activo == "BNB":
-                    indicators = calculate_indicators_for_bnb()
-                elif activo == "BTC":
-                    indicators = get_btc_indicators()
-                else:
-                    raise Exception("Activo no soportado.")
-            except Exception as e:
-                fallback_context = ("No se pudieron obtener datos técnicos en tiempo real. "
-                                    "Revisa una plataforma de trading para obtener información actualizada.")
-                send_telegram_message(fallback_context, chat_id)
-                return
-
-            system_prompt = (
-                "Eres Higgs, Agente X. Tienes acceso a datos técnicos actualizados y a la memoria de la conversación. "
-                "Responde de forma concisa, seria y con un toque de misterio, siempre en español. "
-                "Utiliza los siguientes indicadores para generar un análisis robusto."
-            )
-            context_text = (
-                f"Indicadores técnicos actuales para {activo}:\n"
-                f"• Precio: ${indicators['price']:.2f}\n"
-                f"• RSI: {indicators['rsi']:.2f}\n"
-                f"• MACD: {indicators['macd']:.2f} (Señal: {indicators['macd_signal']:.2f})\n"
-                f"• SMA10: {indicators['sma_10']:.2f} | SMA25: {indicators['sma_25']:.2f} | SMA50: {indicators['sma_50']:.2f}\n"
-                f"• Bollinger Bands: Bajo ${indicators['bb_low']:.2f}, Medio ${indicators['bb_medium']:.2f}, Alto ${indicators['bb_high']:.2f}\n\n"
-                f"Pregunta: {message_text}"
-            )
-            messages = [{"role": "system", "content": system_prompt},
-                        {"role": "user", "content": context_text}]
-            try:
-                response = openai.ChatCompletion.create(
-                    model="gpt-4",
-                    messages=messages,
-                    max_tokens=500,
-                    temperature=0.7
-                )
-                answer = response.choices[0].message.content.strip()
-                send_telegram_message(answer, chat_id)
-                conversation_history[chat_id]["messages"].append({"role": "assistant", "content": answer})
-            except Exception as e:
-                error_msg = f"⚠️ Error al procesar la solicitud: {e}"
-                send_telegram_message(error_msg, chat_id)
-            return
-
-    # Rama: Consultas simples de precio
+    # Rama: Consulta de precio
     if "precio" in lower_msg:
         try:
             if activo == "BNB":
+                # Para BNB no se pasa data, la función la obtiene internamente
                 indicators = calculate_indicators_for_bnb()
                 answer = f"El precio actual de BNB es: ${indicators['price']:.2f}"
             elif activo == "BTC":
@@ -207,7 +135,53 @@ def handle_telegram_message(update):
             send_telegram_message(f"Error al obtener el precio: {e}", chat_id)
         return
 
-    # Rama: Consultas individuales de indicadores (ej. RSI, MACD, SMA, CMF)
+    # Rama: Consulta compleja o actualización
+    if any(keyword in lower_msg for keyword in ["analiza", "análisis", "analisis", "compara", "estrategia", "actualizacion", "actualización", "indicadores"]):
+        try:
+            if activo == "BNB":
+                indicators = calculate_indicators_for_bnb()
+            elif activo == "BTC":
+                indicators = get_btc_indicators()
+            else:
+                raise Exception("Activo no soportado.")
+        except Exception as e:
+            fallback_context = ("No se pudieron obtener datos técnicos en tiempo real. "
+                                "Revisa una plataforma de trading para obtener información actualizada.")
+            send_telegram_message(fallback_context, chat_id)
+            return
+
+        system_prompt = (
+            "Eres Higgs, Agente X. Tienes acceso a datos técnicos actualizados y a la memoria de la conversación. "
+            "Responde de forma concisa, seria y con un toque de misterio, siempre en español. "
+            "Utiliza los siguientes indicadores para generar un análisis robusto."
+        )
+        context_text = (
+            f"Indicadores técnicos actuales para {activo}:\n"
+            f"• Precio: ${indicators['price']:.2f}\n"
+            f"• RSI: {indicators['rsi']:.2f}\n"
+            f"• MACD: {indicators['macd']:.2f} (Señal: {indicators['macd_signal']:.2f})\n"
+            f"• SMA10: {indicators['sma_10']:.2f} | SMA25: {indicators['sma_25']:.2f} | SMA50: {indicators['sma_50']:.2f}\n"
+            f"• Bollinger Bands: Bajo ${indicators['bb_low']:.2f}, Medio ${indicators['bb_medium']:.2f}, Alto ${indicators['bb_high']:.2f}\n\n"
+            f"Pregunta: {message_text}"
+        )
+        messages = [{"role": "system", "content": system_prompt},
+                    {"role": "user", "content": context_text}]
+        try:
+            response = openai.ChatCompletion.create(
+                model="gpt-4",
+                messages=messages,
+                max_tokens=500,
+                temperature=0.7
+            )
+            answer = response.choices[0].message.content.strip()
+            send_telegram_message(answer, chat_id)
+            conversation_history[chat_id]["messages"].append({"role": "assistant", "content": answer})
+        except Exception as e:
+            error_msg = f"⚠️ Error al procesar la solicitud: {e}"
+            send_telegram_message(error_msg, chat_id)
+        return
+
+    # Rama: Consultas específicas (ej. RSI, MACD, SMA, CMF)
     if "rsi" in lower_msg and "indicador" not in lower_msg:
         try:
             if activo == "BNB":
@@ -282,7 +256,7 @@ def handle_telegram_message(update):
             send_telegram_message(f"Error al obtener el CMF: {e}", chat_id)
         return
 
-    # Fallback: Si la consulta no coincide con ninguna rama, se solicita al usuario que sea más específico.
+    # Fallback: Si la consulta no coincide con ninguna rama, se solicita mayor especificidad.
     try:
         fallback_message = "No entendí tu solicitud. Por favor, sé más específico en tu consulta."
         send_telegram_message(fallback_message, chat_id)

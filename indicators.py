@@ -5,16 +5,19 @@ from ta.volatility import BollingerBands
 from market import fetch_data
 from config import TIMEFRAME
 
-def calculate_indicators_for_bnb():
+def calculate_indicators_for_bnb(data=None):
     """
     Obtiene datos OHLC para BNB mediante la API de CoinGecko y calcula los indicadores técnicos:
       - RSI, MACD (y su señal), ADX, SMAs (10, 25, 50) y Bandas de Bollinger.
+    Si se proporciona el parámetro 'data', se utiliza; de lo contrario, se consulta la API.
     Retorna un diccionario con los valores calculados.
     """
-    symbol = "bnb"
-    data = fetch_data(symbol, TIMEFRAME)
+    if data is None:
+        symbol = "bnb"
+        data = fetch_data(symbol, TIMEFRAME)
     if len(data) < 2:
         raise ValueError("Datos insuficientes para calcular indicadores técnicos.")
+    
     close = data['close']
     high = data['high']
     low = data['low']
@@ -38,7 +41,7 @@ def calculate_indicators_for_bnb():
     rsi_series = RSIIndicator(close, window=14).rsi().dropna()
     rsi = rsi_series.iloc[-1] if not rsi_series.empty else None
 
-    # Cálculo de ADX (opcional, si se requiere)
+    # Cálculo de ADX (opcional)
     adx_series = ADXIndicator(high, low, close).adx().dropna()
     adx = adx_series.iloc[-1] if not adx_series.empty else None
 
@@ -51,7 +54,7 @@ def calculate_indicators_for_bnb():
     bb_high_series = bb_indicator.bollinger_hband().dropna()
     bb_high = bb_high_series.iloc[-1] if not bb_high_series.empty else None
 
-    # CMF y volumen: se usan valores fijos (o se pueden calcular con otros métodos)
+    # CMF y volumen (valores fijos o se pueden calcular)
     cmf = 0
     volume_level = "N/A"
     prev_close = close.iloc[-2] if len(close) >= 2 else close.iloc[-1]
@@ -92,14 +95,19 @@ def check_cross_signals(data):
     close = data['close']
     if len(close) < 2:
         return False, False
+
     sma10 = SMAIndicator(close, window=10).sma_indicator().dropna()
     sma25 = SMAIndicator(close, window=25).sma_indicator().dropna()
     sma50 = SMAIndicator(close, window=50).sma_indicator().dropna()
+    
     if len(sma10) < 2 or len(sma25) < 2 or len(sma50) < 2:
         return False, False
+
     sma10_prev, sma10_curr = sma10.iloc[-2], sma10.iloc[-1]
     sma25_prev, sma25_curr = sma25.iloc[-2], sma25.iloc[-1]
     sma50_prev, sma50_curr = sma50.iloc[-2], sma50.iloc[-1]
+    
     golden_cross = (sma10_prev < sma25_prev and sma10_curr >= sma25_curr) and (sma25_prev < sma50_prev and sma25_curr >= sma50_curr)
     death_cross = (sma10_prev > sma25_prev and sma10_curr <= sma25_curr) and (sma25_prev > sma50_prev and sma25_curr <= sma50_curr)
+    
     return golden_cross, death_cross

@@ -4,7 +4,7 @@ import time
 from langdetect import detect
 from config import TELEGRAM_TOKEN, TELEGRAM_CHAT_ID, OPENAI_API_KEY, SYMBOL, TIMEFRAME
 from market import fetch_historical_data
-from indicators import calculate_indicators_for_bnb
+from indicators import calculate_indicators_for_bnb, check_cross_signals
 from btc_indicators import get_btc_indicators
 from ml_model import aggregate_signals
 
@@ -13,8 +13,8 @@ openai.api_key = OPENAI_API_KEY
 if not openai.api_key:
     print("[DEBUG] ¡Atención! La API key de OpenAI no está configurada correctamente.")
 
-# Variables globales para historial de conversación y solicitudes pendientes
-conversation_history = {}  # { chat_id: {"messages": [...], "context": {...} } }
+# Variables globales para el historial de conversación y solicitudes pendientes
+conversation_history = {}  # Estructura: { chat_id: {"messages": [...], "context": {...} } }
 pending_requests = {}
 
 def send_telegram_message(message, chat_id=None):
@@ -53,8 +53,8 @@ def handle_telegram_message(update):
     """
     Procesa los mensajes recibidos en Telegram y responde según el contenido.
     Se delega la obtención de indicadores a funciones especializadas:
-      - Para BNB: calculate_indicators_for_bnb() en indicators.py.
-      - Para BTC: get_btc_indicators() en btc_indicators.py.
+      - Para BNB: calculate_indicators_for_bnb() (en indicators.py).
+      - Para BTC: get_btc_indicators() (en btc_indicators.py).
     Además, se detecta el activo solicitado y se actualiza el contexto.
     """
     global conversation_history, pending_requests
@@ -73,42 +73,44 @@ def handle_telegram_message(update):
     lower_msg = message_text.lower()
     print(f"[DEBUG] Procesando mensaje de @{username}: {message_text}")
 
-    # Si el mensaje es un saludo corto, responder y salir sin procesar el fallback
-    greetings = ["hola", "que onda", "buenos", "saludos"]
-    if lower_msg in greetings:
-        send_telegram_message("¡Hola! Estoy en la blockchain analizando el mercado, listo para ayudarte.", chat_id)
-        return
+    # Si existe una solicitud pendiente para seleccionar activo, se procesa inmediatamente.
+    if chat_id in pending_requests and pending_requests[chat_id] == "seleccionar_activo":
+        activo_response = message_text.strip().upper()
+        if activo_response in ["BNB", "BTC"]:
+            conversation_history.setdefault(chat_id, {"messages": [], "context": {}})["context"]["activo"] = activo_response
+            send_telegram_message(f"Activo actualizado a {activo_response}.", chat_id)
+            del pending_requests[chat_id]
+            return
+        else:
+            send_telegram_message("Activo no reconocido. Por favor, responde con BNB o BTC.", chat_id)
+            return
 
     # Actualizar historial de conversación
     if chat_id not in conversation_history:
         conversation_history[chat_id] = {"messages": [], "context": {}}
     conversation_history[chat_id]["messages"].append({"role": "user", "content": message_text})
 
-    # Manejo de solicitudes pendientes
-    if lower_msg in ["sí", "si", "por favor", "claro"]:
-        if chat_id in pending_requests:
-            if pending_requests[chat_id] == "historical_sma_crosses":
-                try:
-                    df = fetch_historical_data(SYMBOL, TIMEFRAME)
-                    analysis = analyze_sma_crosses(df)
-                    answer = f"Análisis histórico de cruces: {analysis}"
-                    send_telegram_message(answer, chat_id)
-                    conversation_history[chat_id]["messages"].append({"role": "assistant", "content": answer})
-                except Exception as e:
-                    send_telegram_message(f"Error al obtener datos históricos: {e}", chat_id)
-                del pending_requests[chat_id]
-                return
-            elif pending_requests[chat_id] == "seleccionar_activo":
-                activo = lower_msg.strip().upper()
-                if activo in ["BNB", "BTC"]:
-                    conversation_history[chat_id]["context"]["activo"] = activo
-                    send_telegram_message(f"Activo actualizado a {activo}.", chat_id)
-                    return
-                else:
-                    send_telegram_message("Activo no reconocido. Por favor, responde con BNB o BTC.", chat_id)
-                    return
+    # Rama: Respuesta rápida a saludos sencillos
+    greetings = ["hola", "que onda", "buenos", "saludos"]
+    if lower_msg in greetings:
+        send_telegram_message("¡Hola! Estoy en la blockchain analizando el mercado, listo para ayudarte.", chat_id)
+        return
 
-    # Detectar activo usando el mensaje y/o contexto
+    # Rama: Si el mensaje contiene "dominancia", se responde con análisis de BTC
+    if "dominancia" in lower_msg:
+        try:
+            btc_indicators = get_btc_indicators()
+            btc_price = btc_indicators['price']
+            btc_dominance = btc_indicators['dominance']
+            answer = (f"Actualmente, BTC se cotiza a ${btc_price:.2f} y su dominancia es de {btc_dominance:.2f}%.\n"
+                      "Recuerda: Si la dominancia aumenta mientras el precio cae, podría indicar señales de manipulación.")
+            send_telegram_message(answer, chat_id)
+            conversation_history[chat_id]["messages"].append({"role": "assistant", "content": answer})
+        except Exception as e:
+            send_telegram_message(f"Error al obtener la dominancia: {e}", chat_id)
+        return
+
+    # Detectar activo usando el mensaje y/o el contexto almacenado
     activo = detectar_activo(message_text, conversation_history[chat_id].get("context"))
     if not activo:
         send_telegram_message("¿Deseas la actualización de BNB o BTC?", chat_id)
@@ -121,7 +123,6 @@ def handle_telegram_message(update):
     if "precio" in lower_msg:
         try:
             if activo == "BNB":
-                # Para BNB no se pasa data, la función la obtiene internamente
                 indicators = calculate_indicators_for_bnb()
                 answer = f"El precio actual de BNB es: ${indicators['price']:.2f}"
             elif activo == "BTC":
@@ -135,7 +136,7 @@ def handle_telegram_message(update):
             send_telegram_message(f"Error al obtener el precio: {e}", chat_id)
         return
 
-    # Rama: Consulta compleja o actualización
+    # Rama: Consulta compleja o actualización (análisis, estrategia, indicadores)
     if any(keyword in lower_msg for keyword in ["analiza", "análisis", "analisis", "compara", "estrategia", "actualizacion", "actualización", "indicadores"]):
         try:
             if activo == "BNB":

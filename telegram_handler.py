@@ -22,7 +22,7 @@ def send_telegram_message(message, chat_id=None):
     if not chat_id:
         chat_id = TELEGRAM_CHAT_ID
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    payload = {'chat_id': chat_id, 'text': message}
+    payload = {'chat_id': chat_id, 'text': message, 'parse_mode': 'Markdown'}
     try:
         response = requests.post(url, json=payload)
         if response.status_code != 200:
@@ -49,13 +49,21 @@ def detectar_activo(mensaje, contexto=None):
     else:
         return None
 
+def construir_historial(chat_id, max_msgs=5):
+    """
+    Devuelve los últimos mensajes del historial para el chat,
+    en formato de lista de dicts, para usarlos en el prompt.
+    """
+    hist = conversation_history.get(chat_id, {}).get("messages", [])
+    return hist[-max_msgs:]
+
 def handle_telegram_message(update):
     """
     Procesa los mensajes recibidos en Telegram y responde según el contenido.
     Se delega la obtención de indicadores a funciones especializadas:
       - Para BNB: calculate_indicators_for_bnb().
       - Para BTC: get_btc_indicators().
-    Además, se detecta el activo solicitado y se actualiza el contexto.
+    Además, se detecta el activo solicitado y se utiliza el historial para enriquecer el contexto.
     """
     global conversation_history, pending_requests
 
@@ -85,15 +93,14 @@ def handle_telegram_message(update):
         return
     # --- Fin de selección pendiente ---
 
-    # Si el mensaje es exactamente "BNB" o "BTC" (sin otros contenidos), se actualiza el contexto
+    # Si el mensaje es exactamente "BNB" o "BTC" (sin otros contenidos), se actualiza el contexto y se sale.
     if lower_msg in ["bnb", "btc"]:
         conversation_history.setdefault(chat_id, {"messages": [], "context": {}})["context"]["activo"] = lower_msg.upper()
         send_telegram_message(f"Activo establecido a {lower_msg.upper()}.", chat_id)
         return
 
     # Actualizar historial de conversación
-    if chat_id not in conversation_history:
-        conversation_history[chat_id] = {"messages": [], "context": {}}
+    conversation_history.setdefault(chat_id, {"messages": [], "context": {}})
     conversation_history[chat_id]["messages"].append({"role": "user", "content": message_text})
 
     # Rama: Respuesta rápida a saludos sencillos
@@ -109,7 +116,7 @@ def handle_telegram_message(update):
             btc_price = btc_indicators['price']
             btc_dominance = btc_indicators['dominance']
             answer = (f"Actualmente, BTC se cotiza a ${btc_price:.2f} y su dominancia es de {btc_dominance:.2f}%.\n"
-                      "Si la dominancia aumenta mientras el precio cae, podría indicar señales de manipulación.")
+                      "Un aumento en la dominancia, especialmente si el precio baja, puede señalar manipulación en el mercado.")
             send_telegram_message(answer, chat_id)
             conversation_history[chat_id]["messages"].append({"role": "assistant", "content": answer})
         except Exception as e:
@@ -143,8 +150,7 @@ def handle_telegram_message(update):
         return
 
     # Rama: Consulta compleja o actualización (análisis, estrategia, indicadores)
-    # Se añaden palabras clave adicionales para estrategias, como "entrada", "long", "short"
-    complex_keywords = ["analiza", "análisis", "analisis", "compara", "estrategia", "actualizacion", "actualización", "indicadores", "entrada", "long", "short"]
+    complex_keywords = ["analiza", "análisis", "analisis", "compara", "estrategia", "actualizacion", "actualización", "indicadores", "entrada", "long", "short", "cruce", "movil"]
     if any(keyword in lower_msg for keyword in complex_keywords):
         try:
             if activo == "BNB":
@@ -159,12 +165,15 @@ def handle_telegram_message(update):
             send_telegram_message(fallback_context, chat_id)
             return
 
+        # Se incorpora parte del historial (últimos 3 mensajes) para dar contexto a OpenAI
+        historial = construir_historial(chat_id, max_msgs=3)
         system_prompt = (
-            "Eres Higgs, Agente X. Tienes acceso a datos técnicos actualizados y a la memoria de la conversación. "
-            "Responde de forma concisa, seria y con un toque de misterio, siempre en español. "
-            "Utiliza los siguientes indicadores para generar un análisis robusto."
+            "Eres Higgs, Agente X. Eres un experto en trading y tienes acceso a datos técnicos actualizados, así como al historial de conversación. "
+            "Responde de forma concisa, seria y con un toque de misterio. Analiza la siguiente información y genera un análisis robusto que complemente "
+            "los datos técnicos disponibles. Si la información calculada es insuficiente, complementa con tu conocimiento de mercado."
         )
         context_text = (
+            f"Historial reciente: {historial}\n\n"
             f"Indicadores técnicos actuales para {activo}:\n"
             f"• Precio: ${indicators['price']:.2f}\n"
             f"• RSI: {indicators['rsi']:.2f}\n"
@@ -173,8 +182,10 @@ def handle_telegram_message(update):
             f"• Bollinger Bands: Bajo ${indicators['bb_low']:.2f}, Medio ${indicators['bb_medium']:.2f}, Alto ${indicators['bb_high']:.2f}\n\n"
             f"Pregunta: {message_text}"
         )
-        messages = [{"role": "system", "content": system_prompt},
-                    {"role": "user", "content": context_text}]
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": context_text}
+        ]
         try:
             response = openai.ChatCompletion.create(
                 model="gpt-4",
@@ -267,7 +278,7 @@ def handle_telegram_message(update):
 
     # Fallback: Si la consulta no coincide con ninguna rama, se solicita mayor especificidad.
     try:
-        fallback_message = "No entendí tu solicitud. Por favor, sé más específico en tu consulta."
+        fallback_message = "No entendí tu solicitud. ¿Podrías reformular o especificar un poco más tu consulta?"
         send_telegram_message(fallback_message, chat_id)
     except Exception as e:
         print(f"[Error] Fallback: {e}")

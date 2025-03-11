@@ -14,7 +14,7 @@ if not openai.api_key:
     print("[DEBUG] ¡Atención! La API key de OpenAI no está configurada correctamente.")
 
 # Variables globales para historial de conversación y solicitudes pendientes
-conversation_history = {}  # { chat_id: {"messages": [...], "context": {...} } }
+conversation_history = {}  # { chat_id: {"messages": [dict, ...], "context": {"activo": "BNB" or "BTC"} } }
 pending_requests = {}
 
 def send_telegram_message(message, chat_id=None):
@@ -36,16 +36,16 @@ def detect_language(text):
 
 def detectar_activo(mensaje, contexto=None):
     """
-    Detecta el activo (BNB o BTC) a partir del mensaje o del contexto.
-    Si no se identifica, devuelve None.
+    Detecta el activo (BNB o BTC) a partir del contexto almacenado o del mensaje.
+    Si ya existe en el contexto, se devuelve ese valor.
     """
+    if contexto and "activo" in contexto:
+        return contexto["activo"]
     mensaje = mensaje.lower()
     if "btc" in mensaje:
         return "BTC"
     elif "bnb" in mensaje:
         return "BNB"
-    elif contexto and "activo" in contexto:
-        return contexto["activo"]
     else:
         return None
 
@@ -55,7 +55,7 @@ def construir_historial(chat_id, max_msgs=5):
     en formato de lista de dicts, para usarlos en el prompt.
     """
     hist = conversation_history.get(chat_id, {}).get("messages", [])
-    return hist[-max_msgs:]
+    return hist[-max_msgs:]  # Últimos max_msgs mensajes
 
 def handle_telegram_message(update):
     """
@@ -63,7 +63,7 @@ def handle_telegram_message(update):
     Se delega la obtención de indicadores a funciones especializadas:
       - Para BNB: calculate_indicators_for_bnb().
       - Para BTC: get_btc_indicators().
-    Además, se detecta el activo solicitado y se utiliza el historial para enriquecer el contexto.
+    Además, se utiliza el historial de conversación para enriquecer el contexto del prompt.
     """
     global conversation_history, pending_requests
 
@@ -93,7 +93,7 @@ def handle_telegram_message(update):
         return
     # --- Fin de selección pendiente ---
 
-    # Si el mensaje es exactamente "BNB" o "BTC" (sin otros contenidos), se actualiza el contexto y se sale.
+    # Si el mensaje es exactamente "BNB" o "BTC" (sin contenido adicional), actualiza el contexto y termina.
     if lower_msg in ["bnb", "btc"]:
         conversation_history.setdefault(chat_id, {"messages": [], "context": {}})["context"]["activo"] = lower_msg.upper()
         send_telegram_message(f"Activo establecido a {lower_msg.upper()}.", chat_id)
@@ -107,6 +107,19 @@ def handle_telegram_message(update):
     greetings = ["hola", "que onda", "buenos", "saludos"]
     if lower_msg in greetings:
         send_telegram_message("¡Hola! Estoy en la blockchain analizando el mercado, listo para ayudarte.", chat_id)
+        return
+
+    # Rama: Solicitud de gráfico (si se menciona "grafico" o "gráfico")
+    if "grafico" in lower_msg or "gráfico" in lower_msg:
+        try:
+            from PrintGraphic import send_graphic, extract_timeframe
+            timeframe_req = extract_timeframe(lower_msg)
+            chart_type = "line"
+            if any(word in lower_msg for word in ["vela", "candlestick", "japonesas"]):
+                chart_type = "candlestick"
+            send_graphic(chat_id, timeframe_req, chart_type)
+        except Exception as e:
+            send_telegram_message(f"Error al generar gráfico: {e}", chat_id)
         return
 
     # Rama: Si el mensaje contiene "dominancia", responder con análisis de BTC
@@ -123,8 +136,11 @@ def handle_telegram_message(update):
             send_telegram_message(f"Error al obtener la dominancia: {e}", chat_id)
         return
 
-    # Detectar activo usando el mensaje y/o el contexto almacenado
+    # Determinar activo usando el contexto almacenado o el mensaje
     activo = detectar_activo(message_text, conversation_history[chat_id].get("context"))
+    if not activo:
+        # Si no se detecta, se utiliza el activo previamente seleccionado (si existe)
+        activo = conversation_history[chat_id].get("context", {}).get("activo")
     if not activo:
         send_telegram_message("¿Deseas la actualización de BNB o BTC?", chat_id)
         pending_requests[chat_id] = "seleccionar_activo"
@@ -149,8 +165,9 @@ def handle_telegram_message(update):
             send_telegram_message(f"Error al obtener el precio: {e}", chat_id)
         return
 
-    # Rama: Consulta compleja o actualización (análisis, estrategia, indicadores)
-    complex_keywords = ["analiza", "análisis", "analisis", "compara", "estrategia", "actualizacion", "actualización", "indicadores", "entrada", "long", "short", "cruce", "movil"]
+    # Rama: Consulta compleja (análisis, estrategia, indicadores, cruces, etc.)
+    complex_keywords = ["analiza", "análisis", "analisis", "compara", "estrategia", "actualizacion", 
+                          "actualización", "indicadores", "entrada", "long", "short", "cruce", "movil"]
     if any(keyword in lower_msg for keyword in complex_keywords):
         try:
             if activo == "BNB":
@@ -165,12 +182,13 @@ def handle_telegram_message(update):
             send_telegram_message(fallback_context, chat_id)
             return
 
-        # Se incorpora parte del historial (últimos 3 mensajes) para dar contexto a OpenAI
+        # Incluir los últimos 3 mensajes del historial para dar contexto a OpenAI
         historial = construir_historial(chat_id, max_msgs=3)
         system_prompt = (
-            "Eres Higgs, Agente X. Eres un experto en trading y tienes acceso a datos técnicos actualizados, así como al historial de conversación. "
-            "Responde de forma concisa, seria y con un toque de misterio. Analiza la siguiente información y genera un análisis robusto que complemente "
-            "los datos técnicos disponibles. Si la información calculada es insuficiente, complementa con tu conocimiento de mercado."
+            "Eres Higgs, Agente X. Eres un experto en trading y tienes acceso a datos técnicos actualizados, "
+            "además del historial de conversación. Responde con el tono misterioso y profesional que te caracteriza. "
+            "Analiza la siguiente información y genera un análisis robusto que complemente los datos técnicos. "
+            "Si es necesario, complementa con tu conocimiento de mercado."
         )
         context_text = (
             f"Historial reciente: {historial}\n\n"
@@ -276,7 +294,7 @@ def handle_telegram_message(update):
             send_telegram_message(f"Error al obtener el CMF: {e}", chat_id)
         return
 
-    # Fallback: Si la consulta no coincide con ninguna rama, se solicita mayor especificidad.
+    # Fallback: Si la consulta no coincide con ninguna rama, se pide mayor especificidad.
     try:
         fallback_message = "No entendí tu solicitud. ¿Podrías reformular o especificar un poco más tu consulta?"
         send_telegram_message(fallback_message, chat_id)

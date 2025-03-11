@@ -13,8 +13,8 @@ openai.api_key = OPENAI_API_KEY
 if not openai.api_key:
     print("[DEBUG] ¡Atención! La API key de OpenAI no está configurada correctamente.")
 
-# Variables globales para el historial de conversación y solicitudes pendientes
-conversation_history = {}  # Estructura: { chat_id: {"messages": [...], "context": {...} } }
+# Variables globales para historial de conversación y solicitudes pendientes
+conversation_history = {}  # { chat_id: {"messages": [...], "context": {...} } }
 pending_requests = {}
 
 def send_telegram_message(message, chat_id=None):
@@ -53,8 +53,8 @@ def handle_telegram_message(update):
     """
     Procesa los mensajes recibidos en Telegram y responde según el contenido.
     Se delega la obtención de indicadores a funciones especializadas:
-      - Para BNB: calculate_indicators_for_bnb() (en indicators.py).
-      - Para BTC: get_btc_indicators() (en btc_indicators.py).
+      - Para BNB: calculate_indicators_for_bnb().
+      - Para BTC: get_btc_indicators().
     Además, se detecta el activo solicitado y se actualiza el contexto.
     """
     global conversation_history, pending_requests
@@ -73,17 +73,23 @@ def handle_telegram_message(update):
     lower_msg = message_text.lower()
     print(f"[DEBUG] Procesando mensaje de @{username}: {message_text}")
 
-    # Si existe una solicitud pendiente para seleccionar activo, se procesa inmediatamente.
+    # --- Gestión de selección de activo pendiente ---
     if chat_id in pending_requests and pending_requests[chat_id] == "seleccionar_activo":
         activo_response = message_text.strip().upper()
         if activo_response in ["BNB", "BTC"]:
             conversation_history.setdefault(chat_id, {"messages": [], "context": {}})["context"]["activo"] = activo_response
             send_telegram_message(f"Activo actualizado a {activo_response}.", chat_id)
             del pending_requests[chat_id]
-            return
         else:
             send_telegram_message("Activo no reconocido. Por favor, responde con BNB o BTC.", chat_id)
-            return
+        return
+    # --- Fin de selección pendiente ---
+
+    # Si el mensaje es exactamente "BNB" o "BTC" (sin otros contenidos), se actualiza el contexto
+    if lower_msg in ["bnb", "btc"]:
+        conversation_history.setdefault(chat_id, {"messages": [], "context": {}})["context"]["activo"] = lower_msg.upper()
+        send_telegram_message(f"Activo establecido a {lower_msg.upper()}.", chat_id)
+        return
 
     # Actualizar historial de conversación
     if chat_id not in conversation_history:
@@ -96,14 +102,14 @@ def handle_telegram_message(update):
         send_telegram_message("¡Hola! Estoy en la blockchain analizando el mercado, listo para ayudarte.", chat_id)
         return
 
-    # Rama: Si el mensaje contiene "dominancia", se responde con análisis de BTC
+    # Rama: Si el mensaje contiene "dominancia", responder con análisis de BTC
     if "dominancia" in lower_msg:
         try:
             btc_indicators = get_btc_indicators()
             btc_price = btc_indicators['price']
             btc_dominance = btc_indicators['dominance']
             answer = (f"Actualmente, BTC se cotiza a ${btc_price:.2f} y su dominancia es de {btc_dominance:.2f}%.\n"
-                      "Recuerda: Si la dominancia aumenta mientras el precio cae, podría indicar señales de manipulación.")
+                      "Si la dominancia aumenta mientras el precio cae, podría indicar señales de manipulación.")
             send_telegram_message(answer, chat_id)
             conversation_history[chat_id]["messages"].append({"role": "assistant", "content": answer})
         except Exception as e:
@@ -137,7 +143,9 @@ def handle_telegram_message(update):
         return
 
     # Rama: Consulta compleja o actualización (análisis, estrategia, indicadores)
-    if any(keyword in lower_msg for keyword in ["analiza", "análisis", "analisis", "compara", "estrategia", "actualizacion", "actualización", "indicadores"]):
+    # Se añaden palabras clave adicionales para estrategias, como "entrada", "long", "short"
+    complex_keywords = ["analiza", "análisis", "analisis", "compara", "estrategia", "actualizacion", "actualización", "indicadores", "entrada", "long", "short"]
+    if any(keyword in lower_msg for keyword in complex_keywords):
         try:
             if activo == "BNB":
                 indicators = calculate_indicators_for_bnb()

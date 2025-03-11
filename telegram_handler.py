@@ -3,9 +3,9 @@ import openai
 import time
 from langdetect import detect
 from config import TELEGRAM_TOKEN, TELEGRAM_CHAT_ID, OPENAI_API_KEY, SYMBOL, TIMEFRAME
-from market import fetch_historical_data  # Para datos históricos si se requieren
-from indicators import calculate_indicators_for_bnb, fetch_btc_dominance
-from monitor_market import get_btc_indicators
+from market import fetch_historical_data
+from indicators import calculate_indicators_for_bnb  # Función especializada para BNB
+from btc_indicators import get_btc_indicators       # Ahora se importa desde el módulo independiente
 from ml_model import aggregate_signals
 
 # Configurar API key de OpenAI
